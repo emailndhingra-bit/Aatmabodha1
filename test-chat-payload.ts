@@ -1,0 +1,15 @@
+import { GoogleGenAI } from "@google/genai";
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+async function run() {
+  try {
+    const chat = ai.chats.create({
+        model: 'gemini-3.1-pro-preview',
+    });
+    const messagePayload = [{ text: "Hello" }];
+    const response = await chat.sendMessage({ message: messagePayload });
+    console.log("Chat success:", response.text);
+  } catch (e) {
+    console.error("Chat error:", e.message);
+  }
+}
+run();

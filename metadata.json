@@ -1,0 +1,8 @@
+{
+  "name": "Aatmabodha",
+  "description": "An AI-powered tool to analyze AstroSage Vedic Astrology PDFs. Extracts Shodashvarga charts, Shadbala, Dashas, and planetary details using Gemini Vision.",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ]
+}

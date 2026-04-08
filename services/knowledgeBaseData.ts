@@ -1,0 +1,1 @@
+export const defaultKnowledgeBase: { filename: string; content: string }[] = [];
