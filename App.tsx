@@ -663,120 +663,125 @@ const App: React.FC = () => {
   };
 
   const handleGenerateChart = async () => {
-      if (!dob || !tob || !lat || !lon) {
-          setError("Please fill in Date, Time, Latitude, and Longitude.");
-          return;
-      }
-      setAnalyzing(true);
-      setError(null);
-      try {
-          const { date_of_birth, time_of_birth } = convertToISTForAPI(dob, tob, timezone);
-          const payload = {
-              date_of_birth,
-              time_of_birth,
-              latitude: parseFloat(lat),
-              longitude: parseFloat(lon),
-              timezone: timezone
-          };
+    if (!dob || !tob || !lat || !lon) {
+        setError("Please fill in Date, Time, Latitude, and Longitude.");
+        return;
+    }
+    setAnalyzing(true);
+    setError(null);
 
-          let parsed: any = {};
-          try {
-              const res = await fetch('/api/chart', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(payload)
-              });
+    try {
+        const { date_of_birth, time_of_birth } = convertToISTForAPI(dob, tob, timezone);
+        const payload = {
+            date_of_birth,
+            time_of_birth,
+            latitude: parseFloat(lat),
+            longitude: parseFloat(lon),
+            timezone: timezone
+        };
 
-              if (!res.ok) {
-                  throw new Error("API returned an error.");
-              }
-              parsed = await res.json();
-              parsed = enrichRawData(parsed, timezone, lon);
-          } catch (fetchErr: any) {
-              console.error("API Fetch Error:", fetchErr);
-              throw new Error("Failed to fetch chart data from the API. Please try again later.");
-          }
-          
-          const dCharts = Object.keys(parsed).reduce((acc: any, key) => {
-              if (key.match(/^D\d+$/)) {
-                  acc[key] = parsed[key];
-              }
-              return acc;
-          }, {});
+        let parsed: any = {};
+        
+        // --- API FETCH SECTION ---
+        try {
+            // We use the 'VITE_' prefix so the frontend can read the Render variable
+            const apiBaseUrl = import.meta.env.VITE_CHART_API_URL || ''; 
+            
+            const res = await fetch(`${apiBaseUrl}/api/chart`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
 
-          const basicDetailsObj = parsed.Basic_Details || parsed.Traditional || {};
-          if (userName) basicDetailsObj['Name'] = userName;
-          if (userGender && userGender !== 'Prefer not to say') basicDetailsObj['Gender'] = userGender;
-          if (dob) {
-              const [y, m, d] = dob.split('-');
-              basicDetailsObj['Date_of_Birth'] = `${d}/${m}/${y}`;
-          }
-          if (tob) basicDetailsObj['Time_of_Birth'] = tob;
-          if (pobQuery) basicDetailsObj['Place_of_Birth'] = pobQuery;
-          
-          const varshphalDetails = parsed.Varshphal_Details;
-          if (varshphalDetails) {
-              if (varshphalDetails.Muntha_Bhav) basicDetailsObj['Muntha'] = varshphalDetails.Muntha_Bhav;
-              if (varshphalDetails.Varshphal_Lagna) basicDetailsObj['Varshphal Lagna'] = varshphalDetails.Varshphal_Lagna;
-          }
+            if (!res.ok) {
+                throw new Error("API returned an error.");
+            }
+            
+            parsed = await res.json();
+            // Correcting data based on your specific location/timezone logic
+            parsed = enrichRawData(parsed, timezone, lon);
+            
+        } catch (fetchErr: any) {
+            console.error("API Fetch Error:", fetchErr);
+            throw new Error("Failed to fetch chart data from the API. Please try again later.");
+        }
+        // --- END API FETCH SECTION ---
 
-          const combinedData: Partial<RawInput> = {
-              Personal: {
-                  dob: parsed.Varshphal_Details?.Date_of_Birth || dob,
-                  city: parsed.Varshphal_Details?.Birth_City || pobQuery,
-                  lagna: parsed.Varshphal_Details?.Varshphal_Lagna || "Aries",
-                  muntha: parsed.Varshphal_Details?.Muntha_Bhav || "1",
-                  Will_Power_Score: parsed.ATPT?.['Willpower Score'] || parsed.Derived_Metrics?.Willpower_Score || 0
-              },
-              ...dCharts,
-              D1: parsed.D1 || [],
-              D9: parsed.D9 || [],
-              KP_System: parsed.KP || parsed.KP_System || {},
-              summary_bav_by_rashi: parsed.ATPT?.summary_bav_by_rashi || parsed.summary_bav_by_rashi || {},
-              prasthara_pav: parsed.ATPT?.prasthara_pav || parsed.prasthara_pav || {},
-              House_Scores: parsed.ATPT?.House_Scores || parsed.House_Scores || {},
-              vimshottari: parsed.VD || parsed.vimshottari || [],
-              yogini: parsed.YD || parsed.yogini || [],
-              chara: parsed.CD || parsed.chara || [],
-              Chalit_System: parsed.Chalit_System || {},
-              ashtakvarga: parsed.Ashtakvarga || parsed.ashtakvarga || {},
-              avkahadaChakra: parsed.Avakahada_Chakra || parsed.avkahadaChakra || {},
-              basicDetails: basicDetailsObj,
-              favourablePoints: parsed.Favourable_Points || parsed.favourablePoints || {},
-              ghatak: { ...(parsed.Ghatak || parsed.ghatak || {}), Gender: userGender },
-              knowledgeBase: [],
-              charts: parsed.charts || [],
-              Varshphal_Details: parsed.Varshphal_Details || undefined
-          };
+        // This part organizes the data for your UI components
+        const dCharts = Object.keys(parsed).reduce((acc: any, key) => {
+            if (key.match(/^D\d+$/)) {
+                acc[key] = parsed[key];
+            }
+            return acc;
+        }, {});
 
-          const result = processAstrologyJson(combinedData);
-          
-          result.userContext = {
-              gotra: userGotra,
-              baselineMood: userMood,
-              age: userAge,
-              gender: userGender,
-              hasPhoto: !!userPhoto,
-              hasPalm: !!userPalm,
-              palmImageDate: palmImageDate
-          };
+        const basicDetailsObj = parsed.Basic_Details || parsed.Traditional || {};
+        if (userName) basicDetailsObj['Name'] = userName;
+        if (userGender && userGender !== 'Prefer not to say') basicDetailsObj['Gender'] = userGender;
+        if (dob) {
+            const [y, m, d] = dob.split('-');
+            basicDetailsObj['Date_of_Birth'] = `${d}/${m}/${y}`;
+        }
+        if (tob) basicDetailsObj['Time_of_Birth'] = tob;
+        if (pobQuery) basicDetailsObj['Place_of_Birth'] = pobQuery;
+        
+        const combinedData: Partial<RawInput> = {
+            Personal: {
+                dob: parsed.Varshphal_Details?.Date_of_Birth || dob,
+                city: parsed.Varshphal_Details?.Birth_City || pobQuery,
+                lagna: parsed.Varshphal_Details?.Varshphal_Lagna || "Aries",
+                muntha: parsed.Varshphal_Details?.Muntha_Bhav || "1",
+                Will_Power_Score: parsed.ATPT?.['Willpower Score'] || parsed.Derived_Metrics?.Willpower_Score || 0
+            },
+            ...dCharts,
+            D1: parsed.D1 || [],
+            D9: parsed.D9 || [],
+            KP_System: parsed.KP || parsed.KP_System || {},
+            summary_bav_by_rashi: parsed.ATPT?.summary_bav_by_rashi || parsed.summary_bav_by_rashi || {},
+            prasthara_pav: parsed.ATPT?.prasthara_pav || parsed.prasthara_pav || {},
+            House_Scores: parsed.ATPT?.House_Scores || parsed.House_Scores || {},
+            vimshottari: parsed.VD || parsed.vimshottari || [],
+            yogini: parsed.YD || parsed.yogini || [],
+            chara: parsed.CD || parsed.chara || [],
+            Chalit_System: parsed.Chalit_System || {},
+            ashtakvarga: parsed.Ashtakvarga || parsed.ashtakvarga || {},
+            avkahadaChakra: parsed.Avakahada_Chakra || parsed.avkahadaChakra || {},
+            basicDetails: basicDetailsObj,
+            favourablePoints: parsed.Favourable_Points || parsed.favourablePoints || {},
+            ghatak: { ...(parsed.Ghatak || parsed.ghatak || {}), Gender: userGender },
+            knowledgeBase: [],
+            charts: parsed.charts || [],
+            Varshphal_Details: parsed.Varshphal_Details || undefined
+        };
 
-          const missing = identifyMissingData(result);
-          if (missing.length > 0) {
-              setPendingData(result);
-              setMissingDataOptions(missing);
-              setSelectedCalculations(missing);
-              setShowCalculationModal(true);
-          } else {
-              await finalizeData(result);
-          }
+        const result = processAstrologyJson(combinedData);
+        
+        result.userContext = {
+            gotra: userGotra,
+            baselineMood: userMood,
+            age: userAge,
+            gender: userGender,
+            hasPhoto: !!userPhoto,
+            hasPalm: !!userPalm,
+            palmImageDate: palmImageDate
+        };
 
-      } catch (err: any) {
-          console.error(err);
-          setError(err.message || "Failed to generate chart from API.");
-          setAnalyzing(false);
-      }
-  };
+        const missing = identifyMissingData(result);
+        if (missing.length > 0) {
+            setPendingData(result);
+            setMissingDataOptions(missing);
+            setSelectedCalculations(missing);
+            setShowCalculationModal(true);
+        } else {
+            await finalizeData(result);
+        }
+
+    } catch (err: any) {
+        console.error(err);
+        setError(err.message || "Failed to generate chart from API.");
+        setAnalyzing(false);
+    }
+};
 
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
