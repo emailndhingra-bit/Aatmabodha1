@@ -1,3 +1,4 @@
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import type { Chat } from "@google/genai";
 import { Gem, VisualAnalysis, PalmAnalysis, BookChapter, RectificationResult, AnalysisResult } from "../types";
@@ -397,7 +398,7 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
         console.warn('Could not load warm history', e);
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI(GEMINI_API_KEY);
     return ai.chats.create({
         model: 'gemini-3.1-pro-preview',
         config: { systemInstruction: systemInstruction },
@@ -406,7 +407,7 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
 };
 
 export const generateCosmicImage = async (prompt: string, userPhoto?: string, userAge?: string): Promise<string | undefined> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI(GEMINI_API_KEY);
     try {
         const fullPrompt = `Photorealistic portrait. Cinematic lighting. ${prompt}. High Definition, mystical atmosphere. Age: ${userAge || 'ageless'}.`;
         let contents;
@@ -441,7 +442,7 @@ export const generateCosmicImage = async (prompt: string, userPhoto?: string, us
 
 
 export const generateLifeBookAI = async (db: any): Promise<BookChapter[] | undefined> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI(GEMINI_API_KEY);
     const context = generateVirtualFileContext(db, false);
     const prompt = `Based on this chart, write the "Book of Life". Divide the life into 5-7 distinct chapters based on Dasha periods and major transits. 
     For each chapter, provide:
@@ -465,7 +466,7 @@ export const generateLifeBookAI = async (db: any): Promise<BookChapter[] | undef
 };
 
 export const generateBirthTimeRectification = async (db: any, photo?: string | null, palm?: string | null): Promise<RectificationResult | undefined> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI(GEMINI_API_KEY);
     const context = generateVirtualFileContext(db, false);
     let parts: any[] = [{ text: "CONTEXT:\n" + context }];
     
@@ -503,7 +504,7 @@ export const generateBirthTimeRectification = async (db: any, photo?: string | n
 };
 
 export const runAdvancedBTRStep = async (db: any, step: string, history: any[]): Promise<any> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI(GEMINI_API_KEY);
     const context = generateVirtualFileContext(db, false);
     const historyText = history.map(h => `Step ${h.step}: User selected "${h.choice.label}"`).join("\n");
     
@@ -545,7 +546,7 @@ export const generateChartFromBirthDetailsWithAI = async (
   culture: 'EN' | 'JP' | 'HI'
 ): Promise<any | null> => {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const ai = new GoogleGenAI(GEMINI_API_KEY);
         const prompt = `
             You are a Vedic Astrology Calculation Engine. 
             The primary astrology API is currently down, so you must calculate the astrological chart based on the following birth details.
@@ -592,7 +593,7 @@ export const recalculateAstrologyData = async (
   culture: 'EN' | 'JP' | 'HI'
 ): Promise<AnalysisResult | null> => {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const ai = new GoogleGenAI(GEMINI_API_KEY);
         const prompt = `
             You are a Vedic Astrology Calculation Engine. 
             Based on the following planetary positions (D1 Rashi Chart), recalculate the entire astrological profile.
@@ -639,7 +640,7 @@ export const recalculateAstrologyData = async (
 };
 
 export const generateHiddenGemsAI = async (db: any): Promise<{strengths: Gem[], weaknesses: Gem[]}> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI(GEMINI_API_KEY);
     const context = generateVirtualFileContext(db, false);
     const prompt = `Identify "Hidden Gems" (Strengths) and "Shadow Truths" (Weaknesses) in this chart. Focus on rare yogas, nakshatra secrets, and specific placements.
     Output JSON: { "strengths": [{ "id": "...", "type": "strength", "title": "...", "description": "...", "remedyTitle": "...", "remedy": "...", "tag": "...", "planet": "..." }], "weaknesses": [...] }`;
@@ -656,7 +657,7 @@ export const generateHiddenGemsAI = async (db: any): Promise<{strengths: Gem[], 
 };
 
 export const generateDailyForecast = async (db: any, location: string, date: string): Promise<any> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI(GEMINI_API_KEY);
     const context = generateVirtualFileContext(db, false);
     const prompt = `Generate a detailed Daily Forecast for Date: ${date} and Location: ${location}.
     Use the provided chart to calculate Gochar (Transits) effects specifically for this person.

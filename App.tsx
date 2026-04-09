@@ -679,14 +679,14 @@ const App: React.FC = () => {
             longitude: parseFloat(lon),
             timezone: timezone
         };
-
+        const apiBaseUrl = (import.meta as any).env.VITE_API_URL || "";
         let parsed: any = {};
         
+       
         // --- API FETCH SECTION ---
         try {
             // We use the 'VITE_' prefix so the frontend can read the Render variable
-            const apiBaseUrl = import.meta.env.VITE_CHART_API_URL || ''; 
-            
+            const yourVariable = (import.meta as any).env.VITE_ANY_VARIABLE_NAME;            
             const res = await fetch(`${apiBaseUrl}/api/chart`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
