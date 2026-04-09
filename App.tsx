@@ -6,6 +6,7 @@ import { initDatabase } from './services/db';
 import { createChatSession } from './services/geminiService';
 import { processFileContent, processZipFile } from './services/fileProcessor';
 import { AnalysisResult, RawInput } from './types';
+import { saveProfile, getMyProfiles, deleteProfile } from './services/profileService';
 
 import NorthIndianChart from './components/ChartVisualizer';
 import PlanetaryTable from './components/PlanetaryTable';
@@ -108,7 +109,7 @@ const App: React.FC = () => {
   
   // Navigation State
   const [viewMode, setViewMode] = useState<'dashboard' | 'chat' | 'faq' | 'daily'>('chat');
-  const [chatSession, setChatSession] = useState<Chat | null>(null);
+  const [chatSession, setChatSession] = useState<any>(null);
   const [language, setLanguage] = useState<string | null>(null);
   
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -149,6 +150,9 @@ const App: React.FC = () => {
   const [lat, setLat] = useState<string>('');
   const [lon, setLon] = useState<string>('');
   const [isSearchingPob, setIsSearchingPob] = useState(false);
+  const [savedProfiles, setSavedProfiles] = useState<any[]>([]);
+  const [showProfileSelector, setShowProfileSelector] = useState(false);
+  const [profileSaveError, setProfileSaveError] = useState('');
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
   // --- TIMEZONE CALCULATION LOGIC ---
@@ -419,6 +423,37 @@ const App: React.FC = () => {
       // Show consent modal on first chart generation if not yet consented
       if (!hasConsent) {
         setShowConsentModal(true);
+      }
+      try {
+        const token = localStorage.getItem('auth_token');
+        const formData = {
+          name: userName,
+          gender: userGender,
+          dob,
+          tob,
+          city: pobQuery,
+          lat,
+          lon,
+          timezone,
+        };
+        if (token && formData) {
+          await saveProfile({
+            name: formData.name || 'My Profile',
+            gender: formData.gender,
+            dateOfBirth: formData.dob,
+            timeOfBirth: formData.tob,
+            placeOfBirth: formData.city,
+            latitude: formData.lat ? parseFloat(formData.lat) : undefined,
+            longitude: formData.lon ? parseFloat(formData.lon) : undefined,
+            timezone: String(formData.timezone),
+          });
+          const profiles = await getMyProfiles();
+          setSavedProfiles(profiles);
+        }
+      } catch (err: any) {
+        if (err.message && err.message.includes('Maximum 2 profiles')) {
+          setProfileSaveError('You have reached the maximum of 2 profiles. Please delete one to add a new person.');
+        }
       }
   };
 
