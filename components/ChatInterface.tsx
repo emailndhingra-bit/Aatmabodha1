@@ -3,13 +3,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, Sparkles, User, Bot, Loader2, BrainCircuit, Copy, Check, X, Globe, ClipboardCopy, Image as ImageIcon, Eye, Network, Heart, Download, Wand2, Compass, ArrowRight, GitBranch, Lightbulb, Clock, TrendingUp, AlertOctagon, Fingerprint, Users, FileDown, Square, CheckSquare, Crown, Paperclip, FileText, Mic, MicOff, AlertTriangle, Share2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Chat } from '@google/genai';
 import { generateCosmicImage, generateCompactOneLiner, getExtraContext } from '../services/geminiService';
 import { processFileContent, processZipFile } from '../services/fileProcessor';
 import { jsPDF } from "jspdf";
 
 interface Props {
-  chatSession: Chat | null;
+  chatSession: any | null;
   db: any; 
   language: string | null;
   onLanguageSelect: (lang: string) => void;
@@ -306,15 +305,6 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
   // Attachments State
   const [attachments, setAttachments] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const geminiClientRef = useRef<any>(null);
-const getGeminiClient = async () => {
-  if (!geminiClientRef.current) {
-    const { GoogleGenAI } = await import('@google/genai');
-    geminiClientRef.current = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  }
-  return geminiClientRef.current;
-};
-
 
   // Suggestions State
   const [smartInitialSuggestions, setSmartInitialSuggestions] = useState<{icon:any, title:string, prompt:string, displayPrompt?:string, subtext:string}[]>([]);
@@ -783,8 +773,9 @@ const getGeminiClient = async () => {
 
     const instructionBlock = steeringInstructions ? `[SYSTEM: ${steeringInstructions}]` : "";
 
+    const finalPromptText = `${finalContextBlock}${textToSend}\n\n${instructionBlock}`;
     // Add text prompt last
-    messagePayload.push({ text: `${finalContextBlock}${textToSend}\n\n${instructionBlock}` });
+    messagePayload.push({ text: finalPromptText });
 
     // Update topic tracker
     if (shouldInjectChart) setLastInjectedTopic(currentTopic);
@@ -796,13 +787,10 @@ const getGeminiClient = async () => {
     const sendWithRetry = async (retries = 3): Promise<any> => {
       for (let attempt = 0; attempt < retries; attempt++) {
         try {
+          // Chat is handled by services/geminiService.ts via backend proxy.
+          // Keep the same prompt text but route through the existing chat session.
           // @ts-ignore
-      const client = await getGeminiClient();
-return await client.models.generateContent({
-  model: 'gemini-3.1-pro-preview',
-  contents: messagePayload,
-config: { systemInstruction },
-});
+          return await chatSession.sendMessage(finalPromptText);
         } catch (err: any) {
           const msg = err?.message || err?.toString() || '';
           const isRateLimit = msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED');

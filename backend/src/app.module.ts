@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ChartModule } from './chart/chart.module';
+import { GeminiModule } from './gemini/gemini.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { ChartModule } from './chart/chart.module';
       }),
     }),
     ChartModule,
+    GeminiModule,
   ],
 })
 export class AppModule {}
