@@ -39,4 +39,30 @@ export class AuthService {
     if (!valid) throw new UnauthorizedException('Invalid credentials');
     return user;
   }
+
+  async register(email: string, password: string, name: string) {
+    const existing = await this.usersService.findByEmail(email);
+    if (existing) throw new BadRequestException('Email already registered');
+    const hash = await bcrypt.hash(password, 10);
+    const status =
+      process.env.ADMIN_EMAIL && email === process.env.ADMIN_EMAIL
+        ? UserStatus.APPROVED
+        : UserStatus.PENDING;
+    const user = await this.usersService.createUser({
+      email,
+      password: hash,
+      name,
+      status,
+    });
+    const { password: _pw, ...safe } = user;
+    return { message: 'Registration successful', user: safe };
+  }
+
+  generateToken(user: User): string {
+    return this.jwtService.sign({ sub: user.id, email: user.email });
+  }
+
+  isAdmin(email: string): boolean {
+    return !!process.env.ADMIN_EMAIL && email === process.env.ADMIN_EMAIL;
+  }
 }
