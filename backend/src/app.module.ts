@@ -3,6 +3,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ChartModule } from './chart/chart.module';
 import { GeminiModule } from './gemini/gemini.module';
+import { UsersModule } from './users/users.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -28,6 +30,8 @@ import { GeminiModule } from './gemini/gemini.module';
     }),
     ChartModule,
     GeminiModule,
+    UsersModule,
+    AuthModule,
   ],
 })
 export class AppModule {}
