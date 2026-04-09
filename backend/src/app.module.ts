@@ -19,6 +19,9 @@ import { GeminiModule } from './gemini/gemini.module';
         username: config.get<string>('DB_USER', 'postgres'),
         password: config.get<string>('DB_PASSWORD', 'postgres'),
         database: config.get<string>('DB_NAME', 'aatmabodha'),
+        ssl: {
+          rejectUnauthorized: false,
+        },
         autoLoadEntities: true,
         synchronize: config.get<string>('DB_SYNC', 'true') === 'true',
       }),
