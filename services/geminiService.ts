@@ -7,7 +7,7 @@ import { ORACLE_RULES } from "./oracleRules";
 // Never call Gemini directly from the browser.
 // Set NEXT_PUBLIC_BACKEND_URL in your .env.local and on Vercel.
 // ─────────────────────────────────────────────────────────────
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://flask-creator-nitingauri2008.replit.app";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://aatmabodha1-backend.onrender.com";
 const GEMINI_MODEL = "gemini-3.1-pro-preview";
 
 // ─────────────────────────────────────────────────────────────
