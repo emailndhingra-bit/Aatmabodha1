@@ -6,6 +6,7 @@ import { GeminiModule } from './gemini/gemini.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { ProfilesModule } from './profiles/profiles.module';
+import { QuestionsModule } from './questions/questions.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { ProfilesModule } from './profiles/profiles.module';
     UsersModule,
     AuthModule,
     ProfilesModule,
+    QuestionsModule,
   ],
 })
 export class AppModule {}
