@@ -22,7 +22,10 @@ import DailyForecast from './components/DailyForecast';
 import DatabaseViewer from './components/DatabaseViewer';
 import BasicDetailsDisplay from './components/BasicDetailsDisplay';
 import TraditionalSummary from './components/TraditionalSummary';
-import { Chat } from '@google/genai';
+import Login from './src/pages/Login';
+import AuthCallback from './src/pages/AuthCallback';
+import PendingApproval from './src/pages/PendingApproval';
+import AdminDashboard from './src/pages/AdminDashboard';
 
 type CultureMode = 'EN' | 'JP' | 'HI';
 
@@ -45,6 +48,17 @@ function convertToISTForAPI(dob: string, tob: string, timezoneOffset: number) {
 }
 
 const App: React.FC = () => {
+  const path = window.location.pathname;
+  if (path === '/login') return <Login />;
+  if (path === '/auth/callback') return <AuthCallback />;
+  if (path === '/auth/pending') return <PendingApproval />;
+  if (path === '/admin') return <AdminDashboard />;
+  
+  const token = localStorage.getItem('auth_token');
+  if (!token) {
+    window.location.href = '/login';
+    return null;
+  }
   const [analyzing, setAnalyzing] = useState(false);
   const [data, setData] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
