@@ -1,7 +1,7 @@
 import { Controller, Post, Body, HttpException, HttpStatus } from '@nestjs/common';
 import { GeminiService } from './gemini.service';
 
-@Controller('api')
+@Controller('')
 export class GeminiController {
   constructor(private readonly geminiService: GeminiService) {}
 
