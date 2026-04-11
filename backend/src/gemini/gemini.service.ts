@@ -71,6 +71,28 @@ export class GeminiService {
     return { inputTokens, outputTokens, cachedTokens, costUsd };
   }
 
+  /** Strip SUGG block before length cap, then re-append so suggestions are never cut. */
+  private truncatePreservingSugg(text: string, keywordSource: string): string {
+    const suggMatch = text.match(/<<<SUGG[\s\S]*?>>>/);
+    const suggBlock = suggMatch ? suggMatch[0] : '';
+    const textBody = suggBlock ? text.replace(suggBlock, '').trim() : text;
+    const lc = keywordSource.toLowerCase();
+    const charLimit =
+      lc.includes('table') ||
+      lc.includes('each year') ||
+      lc.includes('year by year') ||
+      lc.includes('list all')
+        ? 1800
+        : 2800;
+    let truncated = textBody;
+    if (textBody.length > charLimit) {
+      const cutPoint = textBody.lastIndexOf('.', charLimit);
+      truncated =
+        cutPoint > 0 ? textBody.substring(0, cutPoint + 1) : textBody.substring(0, charLimit);
+    }
+    return suggBlock ? `${truncated}\n\n${suggBlock}` : truncated;
+  }
+
   async generateContent(body: any, userId?: string): Promise<any> {
     const { prompt, responseFormat, imageParts = [] } = body;
     const inflightKey = `${(prompt || '').substring(0, 100)}${responseFormat ?? ''}`;
@@ -94,19 +116,7 @@ export class GeminiService {
       );
       const data = await res.json();
       let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const msgForLimit = String(prompt || '').toLowerCase();
-      const isLongForm =
-        msgForLimit.includes('table') ||
-        msgForLimit.includes('each year') ||
-        msgForLimit.includes('year by year') ||
-        msgForLimit.includes('window') ||
-        msgForLimit.includes('list all');
-      const charLimit = isLongForm ? 2000 : 3200;
-      if (text && text.length > charLimit) {
-        const cutPoint = text.lastIndexOf('.', charLimit);
-        text =
-          cutPoint > 0 ? text.substring(0, cutPoint + 1) : text.substring(0, charLimit);
-      }
+      text = this.truncatePreservingSugg(text, String(prompt || ''));
 
       const fromUsage = this.costFromUsageMetadata(data);
       let inputTokens: number;
@@ -117,9 +127,9 @@ export class GeminiService {
         outputTokens = fromUsage.outputTokens;
         costUsd = fromUsage.costUsd;
       } else {
-        inputTokens = this.questionsService.estimateTokens(prompt);
-        outputTokens = this.questionsService.estimateTokens(text);
-        costUsd = this.questionsService.estimateCost(inputTokens, outputTokens);
+        inputTokens = 0;
+        outputTokens = 0;
+        costUsd = 0;
       }
 
       if (userId) {
@@ -164,8 +174,8 @@ export class GeminiService {
       ? `${message}\n\n[PAST CONTEXT - user's recent questions for continuity:\n${past}\nReference naturally, never say "as per last conversation".]`
       : message;
 
-    const cappedHistory = history.slice(-6);
-    // Keep only last 3 exchanges (6 messages)
+    const cappedHistory = history.slice(-4);
+    // Keep only last 2 exchanges (4 messages)
 
     const contents = [
       ...cappedHistory.map((h: any) => ({ role: h.role, parts: [{ text: h.text }] })),
@@ -246,19 +256,7 @@ export class GeminiService {
       );
       const data = await res.json();
       let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const msgForLimit = String(message || '').toLowerCase();
-      const isLongForm =
-        msgForLimit.includes('table') ||
-        msgForLimit.includes('each year') ||
-        msgForLimit.includes('year by year') ||
-        msgForLimit.includes('window') ||
-        msgForLimit.includes('list all');
-      const charLimit = isLongForm ? 2000 : 3200;
-      if (text && text.length > charLimit) {
-        const cutPoint = text.lastIndexOf('.', charLimit);
-        text =
-          cutPoint > 0 ? text.substring(0, cutPoint + 1) : text.substring(0, charLimit);
-      }
+      text = this.truncatePreservingSugg(text, String(message || ''));
 
       const fromUsage = this.costFromUsageMetadata(data);
       let inputTokens: number;
@@ -269,9 +267,9 @@ export class GeminiService {
         outputTokens = fromUsage.outputTokens;
         costUsd = fromUsage.costUsd;
       } else {
-        inputTokens = this.questionsService.estimateTokens(message);
-        outputTokens = this.questionsService.estimateTokens(text);
-        costUsd = this.questionsService.estimateCost(inputTokens, outputTokens);
+        inputTokens = 0;
+        outputTokens = 0;
+        costUsd = 0;
       }
 
       if (userId) {
