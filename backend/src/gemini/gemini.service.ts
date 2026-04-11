@@ -110,6 +110,8 @@ export class GeminiService {
     ];
 
     let cachedContentName: string | null = null;
+    /** True only when reusing an existing Gemini cachedContent handle (not first create). */
+    let contextCacheHit = false;
 
     if (systemInstruction) {
       const natalFp =
@@ -122,6 +124,7 @@ export class GeminiService {
       const entry = this.contextCache.get(instructionKey);
       if (entry && Date.now() < entry.expiresAt) {
         cachedContentName = entry.name;
+        contextCacheHit = true;
         console.log('[ContextCache] Hit:', cachedContentName);
       } else {
         const controller = new AbortController();
@@ -192,12 +195,12 @@ export class GeminiService {
             question: userQuestion || message,
             response: text,
             language: body.language || 'EN',
-            cacheHit: false,
+            cacheHit: contextCacheHit,
           })
           .catch(() => {});
       }
 
-      return { text, cacheHit: false, costUsd, inputTokens, outputTokens };
+      return { text, cacheHit: contextCacheHit, costUsd, inputTokens, outputTokens };
     } catch (err: unknown) {
       if (isAbortError(err)) {
         console.warn('[Gemini chat] generateContent aborted (timeout or client disconnect)');
