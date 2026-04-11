@@ -82,6 +82,8 @@ export class GeminiService {
 
   async chat(body: any, userId?: string): Promise<any> {
     const { systemInstruction, history = [], message, userQuestion } = body;
+    console.log('[Chat] userQuestion received:', userQuestion);
+    console.log('[Chat] message first 50 chars:', message?.substring(0, 50));
     const contents = [
       ...history.map((h: any) => ({ role: h.role, parts: [{ text: h.text }] })),
       { role: 'user', parts: [{ text: message }] },
