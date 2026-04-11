@@ -21,8 +21,28 @@ export class GeminiService {
 
   constructor(private questionsService: QuestionsService) {}
 
-  private contextInstructionCacheKey(systemInstruction: string): string {
-    return createHash('sha256').update(systemInstruction.substring(0, 100)).digest('hex');
+  /** Strip volatile lines so Gemini context-cache keys stay stable across days. */
+  private normalizeSystemInstructionForCache(systemInstruction: string): string {
+    return systemInstruction.replace(
+      /\bCURRENT_DATE:\s*\d{4}-\d{2}-\d{2}\b/gi,
+      'CURRENT_DATE:__STABLE__',
+    );
+  }
+
+  /**
+   * Cache key for cachedContents must not depend on today's date or transit text.
+   * Uses: userId (when present), optional natalFingerprint from client (natal DB slice),
+   * and full normalized system instruction (date placeholder only).
+   */
+  private contextInstructionCacheKey(
+    systemInstruction: string,
+    userId?: string,
+    natalFingerprint?: string,
+  ): string {
+    const normalized = this.normalizeSystemInstructionForCache(systemInstruction);
+    const fp = (natalFingerprint ?? '').trim();
+    const material = `${userId ?? 'anon'}\x1e${fp}\x1e${normalized}`;
+    return createHash('sha256').update(material).digest('hex');
   }
 
   async generateContent(body: any, userId?: string): Promise<any> {
@@ -81,9 +101,7 @@ export class GeminiService {
   }
 
   async chat(body: any, userId?: string): Promise<any> {
-    const { systemInstruction, history = [], message, userQuestion } = body;
-    console.log('[Chat] userQuestion received:', userQuestion);
-    console.log('[Chat] message first 50 chars:', message?.substring(0, 50));
+    const { systemInstruction, history = [], message, userQuestion, natalFingerprint } = body;
     const contents = [
       ...history.map((h: any) => ({ role: h.role, parts: [{ text: h.text }] })),
       { role: 'user', parts: [{ text: message }] },
@@ -92,7 +110,13 @@ export class GeminiService {
     let cachedContentName: string | null = null;
 
     if (systemInstruction) {
-      const instructionKey = this.contextInstructionCacheKey(systemInstruction);
+      const natalFp =
+        typeof natalFingerprint === 'string' ? natalFingerprint : undefined;
+      const instructionKey = this.contextInstructionCacheKey(
+        systemInstruction,
+        userId,
+        natalFp,
+      );
       const entry = this.contextCache.get(instructionKey);
       if (entry && Date.now() < entry.expiresAt) {
         cachedContentName = entry.name;

@@ -11,6 +11,8 @@ import {
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://aatmabodha1-backend.onrender.com';
 
+const USD_TO_INR = 92.47;
+
 const REPORT_TYPE_BADGE: Record<string, { bg: string; color: string }> = {
   life_book: { bg: 'rgba(139, 92, 246, 0.28)', color: '#d8b4fe' },
   hidden_gems: { bg: 'rgba(245, 158, 11, 0.22)', color: '#fcd34d' },
@@ -19,8 +21,6 @@ const REPORT_TYPE_BADGE: Record<string, { bg: string; color: string }> = {
 };
 
 export default function AdminDashboard() {
-  const USD_TO_INR = 92.47;
-
   const [tab, setTab] = useState<'users' | 'questions' | 'cost' | 'reports'>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
@@ -163,9 +163,7 @@ export default function AdminDashboard() {
         <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
           {[
             { label: 'Total Questions', val: stats.totalQuestions ?? 0 },
-            { label: 'Total Cost', val: `$${(stats.totalCost ?? 0).toFixed(4)}` },
             { label: 'Total Cost (INR)', val: `₹${((stats.totalCost ?? 0) * USD_TO_INR).toFixed(2)}` },
-            { label: 'Avg Cost/Q', val: `$${(stats.avgCostPerQuestion ?? 0).toFixed(5)}` },
             { label: 'Avg Cost/Q (INR)', val: `₹${((stats.avgCostPerQuestion ?? 0) * USD_TO_INR).toFixed(4)}` },
             { label: 'Cache Hits', val: stats.cacheHits ?? 0 },
             { label: 'Cache Size', val: stats.cache?.size ?? 0 },
@@ -267,7 +265,7 @@ export default function AdminDashboard() {
                           {q.cacheHit ? 'HIT' : 'MISS'}
                         </span>
                       </td>
-                      <td style={{ padding: '10px 12px', color: '#c9a84c' }}>${(q.costUsd || 0).toFixed(5)}</td>
+                      <td style={{ padding: '10px 12px', color: '#c9a84c' }}>₹{((q.costUsd || 0) * USD_TO_INR).toFixed(4)}</td>
                       <td style={{ padding: '10px 12px', color: '#666', fontSize: 11 }}>{new Date(q.createdAt).toLocaleString()}</td>
                     </tr>
                   ))}
@@ -287,10 +285,8 @@ export default function AdminDashboard() {
             </h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {[
-                { label: 'Total USD', val: `$${(stats?.totalCost ?? 0).toFixed(6)}` },
-                { label: 'Total INR', val: `₹${((stats?.totalCost ?? 0) * USD_TO_INR).toFixed(2)}` },
-                { label: 'Avg per Question USD', val: `$${(stats?.avgCostPerQuestion ?? 0).toFixed(6)}` },
-                { label: 'Avg per Question INR', val: `₹${((stats?.avgCostPerQuestion ?? 0) * USD_TO_INR).toFixed(4)}` },
+                { label: 'Total Cost (INR)', val: `₹${((stats?.totalCost ?? 0) * USD_TO_INR).toFixed(2)}` },
+                { label: 'Avg Cost/Q (INR)', val: `₹${((stats?.avgCostPerQuestion ?? 0) * USD_TO_INR).toFixed(4)}` },
                 { label: 'Cache Hit Questions', val: stats?.cacheHits ?? 0 },
                 { label: 'Total Questions', val: stats?.totalQuestions ?? 0 },
               ].map(row => (

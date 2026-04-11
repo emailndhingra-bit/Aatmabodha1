@@ -95,6 +95,7 @@ const callGeminiChat = async (
     history: { role: "user" | "model"; text: string }[],
     newMessage: string,
     userQuestion?: string,
+    natalFingerprint?: string,
 ): Promise<GeminiChatResult> => {
     const res = await fetch(`${BACKEND_URL}/api/gemini-chat`, {
         method: "POST",
@@ -104,6 +105,7 @@ const callGeminiChat = async (
             systemInstruction,
             history,
             message: newMessage,
+            ...(natalFingerprint ? { natalFingerprint } : {}),
             ...(userQuestion != null && userQuestion !== ""
                 ? { userQuestion }
                 : {}),
@@ -355,20 +357,18 @@ export const getSystemInstruction = (db: any, language: string, cultureMode: 'EN
     }
 
     const systemInstruction = `
-    CURRENT_DATE: ${new Date().toISOString().split('T')[0]}
-
     ${baseRules}
     
     ## DASHA DATA PARSING (How to read the chart data)
     Format: \`Planet A - Planet B - Planet C | Ends: DD/MM/YYYY\`
     First Name (before 1st hyphen) = MAHADASHA (MD). Second Name = ANTARDASHA (AD). Third Name = PRATYANTARDASHA (PD).
-    To find CURRENT dasha: scan [VIMSHOTTARI DASHA TIMELINE], find first row where Ends date > CURRENT_DATE. That row is the active period.
+    To find CURRENT dasha: scan [VIMSHOTTARI DASHA TIMELINE], find first row where Ends date > the session "Today" date in [CHART_DATA] (line \`Today:[YYYY-MM-DD]\`). That row is the active period.
     MD START DATE = end date of the PREVIOUS Mahadasha's last Antardasha. Never use first PD end date as MD start.
     Never mix up MD and AD. "Rahu - Jupiter" = Rahu is MD, Jupiter is AD.
     
     ## ANTI-HALLUCINATION GUARDS
-    - CURRENT_DATE above is absolute truth. Never use training-data dates for "today."
-    - Transit positions: use ONLY the [TRANSITS] data provided. Never calculate from memory.
+    - Calendar "today": use ONLY the \`Today:[YYYY-MM-DD]\` line inside [CHART_DATA] in the user's message. Never use training-data dates for "today."
+    - Transit positions: use ONLY the \`TRANSITS:\` line inside [CHART_DATA] in the user's message. Never calculate transits from memory.
     - Calibration: In 2026, Rahu is in Aquarius, Ketu in Leo. If your output differs, recalculate.
     - Never guess Lagna without precise birth time + coordinates.
     
@@ -388,6 +388,7 @@ export const getSystemInstruction = (db: any, language: string, cultureMode: 'EN
 // ─────────────────────────────────────────────────────────────
 export const createChatSession = async (db: any, language: string, cultureMode: 'EN' | 'JP' | 'HI' = 'EN'): Promise<any> => {
     const context = generateCompactOneLiner(db);
+    const natalFingerprint = await computeNatalContextFingerprint(db);
     const { systemInstruction, initialGreeting } = getSystemInstruction(db, language, cultureMode);
 
     // Load warm history from localStorage (same logic as before)
@@ -418,6 +419,7 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
         _history: chatHistory,
         _systemInstruction: systemInstruction,
         _context: context,
+        _natalFingerprint: natalFingerprint,
 
         sendMessage: async function (userMessage: string, userQuestion?: string) {
             const fullPrompt = userMessage;
@@ -427,6 +429,7 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
                 this._history,
                 fullPrompt,
                 userQuestion,
+                this._natalFingerprint,
             );
             const responseText = out.error ? out.error : out.text;
 
@@ -965,6 +968,35 @@ KP_HOUSE_SIGNIFICATORS(which planets rule each house via KP):${JSON.stringify(kp
 
   return extra;
 };
+
+// ─────────────────────────────────────────────────────────────
+// Stable natal fingerprint for server-side context-cache keys (no date / transits)
+// ─────────────────────────────────────────────────────────────
+export async function computeNatalContextFingerprint(db: any): Promise<string> {
+    if (!db || typeof crypto === 'undefined' || !crypto.subtle) return '';
+    const parts: string[] = [];
+    try {
+        const basic = db.exec('SELECT key, value FROM basic_details ORDER BY key');
+        if (basic[0]?.values?.length) parts.push(JSON.stringify(basic[0].values));
+        const avk = db.exec('SELECT key, value FROM avkahada_chakra ORDER BY key');
+        if (avk[0]?.values?.length) parts.push(JSON.stringify(avk[0].values));
+        const pers = db.exec('SELECT property, value FROM personal ORDER BY property');
+        if (pers[0]?.values?.length) parts.push(JSON.stringify(pers[0].values));
+        const pl = db.exec(
+            `SELECT planet_name, D1_Rashi_house, D1_Rashi_sign, D1_Rashi_degree, D1_Rashi_nakshatra, D1_Rashi_pada
+             FROM planets WHERE planet_name != 'Lagna' ORDER BY planet_name`,
+        );
+        if (pl[0]?.values?.length) parts.push(JSON.stringify(pl[0].values));
+    } catch {
+        return '';
+    }
+    const blob = parts.join('|');
+    if (!blob) return '';
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(blob));
+    return Array.from(new Uint8Array(buf))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+}
 
 // ─────────────────────────────────────────────────────────────
 // generateCompactOneLiner — unchanged, no API calls
