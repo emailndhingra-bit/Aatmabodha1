@@ -93,7 +93,8 @@ type GeminiChatResult = { text: string; error?: string };
 const callGeminiChat = async (
     systemInstruction: string,
     history: { role: "user" | "model"; text: string }[],
-    newMessage: string
+    newMessage: string,
+    userQuestion?: string,
 ): Promise<GeminiChatResult> => {
     const res = await fetch(`${BACKEND_URL}/api/gemini-chat`, {
         method: "POST",
@@ -103,6 +104,9 @@ const callGeminiChat = async (
             systemInstruction,
             history,
             message: newMessage,
+            ...(userQuestion != null && userQuestion !== ""
+                ? { userQuestion }
+                : {}),
         }),
     });
     if (!res.ok) {
@@ -415,7 +419,7 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
         _systemInstruction: systemInstruction,
         _context: context,
 
-        sendMessage: async function (userMessage: string) {
+        sendMessage: async function (userMessage: string, userQuestion?: string) {
             const fullPrompt = this._history.length === 0
                 ? `CHART CONTEXT:\n${this._context}\n\nUSER: ${userMessage}`
                 : userMessage;
@@ -423,7 +427,8 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
             const out = await callGeminiChat(
                 this._systemInstruction,
                 this._history,
-                fullPrompt
+                fullPrompt,
+                userQuestion,
             );
             const responseText = out.error ? out.error : out.text;
 

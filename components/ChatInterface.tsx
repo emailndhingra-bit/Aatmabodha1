@@ -790,7 +790,7 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
           // Chat is handled by services/geminiService.ts via backend proxy.
           // Keep the same prompt text but route through the existing chat session.
           // @ts-ignore
-          return await chatSession.sendMessage(finalPromptText);
+          return await chatSession.sendMessage(finalPromptText, textToSend);
         } catch (err: any) {
           const msg = err?.message || err?.toString() || '';
           const isRateLimit = msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED');

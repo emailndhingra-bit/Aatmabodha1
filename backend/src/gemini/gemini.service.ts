@@ -81,7 +81,7 @@ export class GeminiService {
   }
 
   async chat(body: any, userId?: string): Promise<any> {
-    const { systemInstruction, history = [], message } = body;
+    const { systemInstruction, history = [], message, userQuestion } = body;
     const contents = [
       ...history.map((h: any) => ({ role: h.role, parts: [{ text: h.text }] })),
       { role: 'user', parts: [{ text: message }] },
@@ -161,7 +161,7 @@ export class GeminiService {
         await this.questionsService
           .logQuestion({
             userId,
-            question: message,
+            question: userQuestion || message,
             response: text,
             language: body.language || 'EN',
             cacheHit: false,
