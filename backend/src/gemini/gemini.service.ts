@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { QuestionsService } from '../questions/questions.service';
 
@@ -10,6 +11,10 @@ export class GeminiService {
   private readonly contextCache = new Map<string, { name: string; expiresAt: number }>();
 
   constructor(private questionsService: QuestionsService) {}
+
+  private contextInstructionCacheKey(systemInstruction: string): string {
+    return createHash('sha256').update(systemInstruction.substring(0, 100)).digest('hex');
+  }
 
   async generateContent(body: any, userId?: string): Promise<any> {
     const { prompt, responseFormat, imageParts = [] } = body;
@@ -75,18 +80,22 @@ export class GeminiService {
 
     let cachedContentName: string | null = null;
 
-    if (userId && systemInstruction) {
-      const entry = this.contextCache.get(userId);
+    if (systemInstruction) {
+      const instructionKey = this.contextInstructionCacheKey(systemInstruction);
+      const entry = this.contextCache.get(instructionKey);
       if (entry && Date.now() < entry.expiresAt) {
         cachedContentName = entry.name;
         console.log('[ContextCache] Hit:', cachedContentName);
       } else {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
         try {
           const res = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/cachedContents?key=${this.apiKey}`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
+              signal: controller.signal,
               body: JSON.stringify({
                 model: 'models/gemini-3.1-pro-preview',
                 systemInstruction: { parts: [{ text: systemInstruction }] },
@@ -100,12 +109,15 @@ export class GeminiService {
             throw new Error(created?.error?.message || `HTTP ${res.status}`);
           }
           const name = created.name as string;
-          this.contextCache.set(userId, { name, expiresAt: Date.now() + 3500000 });
+          this.contextCache.set(instructionKey, { name, expiresAt: Date.now() + 3500000 });
           cachedContentName = name;
           console.log('[ContextCache] Created:', name);
-        } catch {
-          console.warn('[ContextCache] Failed, using direct call');
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn('[ContextCache] Failed:', msg);
           cachedContentName = null;
+        } finally {
+          clearTimeout(timeout);
         }
       }
     }
@@ -117,34 +129,41 @@ export class GeminiService {
       payload.systemInstruction = { parts: [{ text: systemInstruction }] };
     }
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      },
-    );
-    const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const genController = new AbortController();
+    const genTimeout = setTimeout(() => genController.abort(), 30000);
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: genController.signal,
+          body: JSON.stringify(payload),
+        },
+      );
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-    const inputTokens = this.questionsService.estimateTokens(message);
-    const outputTokens = this.questionsService.estimateTokens(text);
-    const costUsd = this.questionsService.estimateCost(inputTokens, outputTokens);
+      const inputTokens = this.questionsService.estimateTokens(message);
+      const outputTokens = this.questionsService.estimateTokens(text);
+      const costUsd = this.questionsService.estimateCost(inputTokens, outputTokens);
 
-    if (userId) {
-      await this.questionsService
-        .logQuestion({
-          userId,
-          question: message,
-          response: text,
-          language: body.language,
-          cacheHit: false,
-        })
-        .catch(() => {});
+      if (userId) {
+        await this.questionsService
+          .logQuestion({
+            userId,
+            question: message,
+            response: text,
+            language: body.language,
+            cacheHit: false,
+          })
+          .catch(() => {});
+      }
+
+      return { text, cacheHit: false, costUsd, inputTokens, outputTokens };
+    } finally {
+      clearTimeout(genTimeout);
     }
-
-    return { text, cacheHit: false, costUsd, inputTokens, outputTokens };
   }
 
   async generateImage(body: any): Promise<any> {
