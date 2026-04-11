@@ -199,65 +199,6 @@ const App: React.FC = () => {
     }
   }, [dob, tob, timezoneName]);
 
-  // --- PERSISTENCE LOGIC ---
-  useEffect(() => {
-    const loadCachedData = async () => {
-      try {
-        const cached = localStorage.getItem('vedicAstroData');
-        const cachedPhoto = localStorage.getItem('vedicUserPhoto');
-        const cachedPalm = localStorage.getItem('vedicUserPalm');
-        const cachedAge = localStorage.getItem('vedicUserAge');
-        const cachedGotra = localStorage.getItem('vedicUserGotra');
-        const cachedMood = localStorage.getItem('vedicUserMood');
-        const cachedGender = localStorage.getItem('vedicUserGender');
-        const cachedPalmDate = localStorage.getItem('vedicUserPalmDate');
-        const cachedLoc = localStorage.getItem('vedicUserLocation');
-        const cachedTimezoneName = localStorage.getItem('vedicUserTimezoneName');
-        const cachedTimezone = localStorage.getItem('vedicUserTimezone');
-
-        if (cachedPhoto) setUserPhoto(cachedPhoto);
-        if (cachedPalm) setUserPalm(cachedPalm);
-        if (cachedAge) setUserAge(cachedAge);
-        if (cachedGotra) setUserGotra(cachedGotra);
-        if (cachedMood) setUserMood(cachedMood);
-        if (cachedGender) setUserGender(cachedGender);
-        if (cachedPalmDate) setPalmImageDate(cachedPalmDate);
-        if (cachedTimezoneName) setTimezoneName(cachedTimezoneName);
-        if (cachedTimezone) setTimezone(parseFloat(cachedTimezone));
-        
-        const cachedConsent = localStorage.getItem('vedicConsentVersion');
-        if (cachedConsent === CONSENT_VERSION) {
-          setHasConsent(true);
-          setConsentResearch(localStorage.getItem('vedicConsentResearch') === 'true');
-          setConsentPartnerShare(localStorage.getItem('vedicConsentPartnerShare') === 'true');
-        }
-
-        let lat, lng;
-        if (cachedLoc && cachedLoc.includes(',')) {
-            const [la, ln] = cachedLoc.split(',').map(s => parseFloat(s.trim()));
-            if (!isNaN(la) && !isNaN(ln)) {
-                lat = la; lng = ln;
-                setUserLocation({lat, lng});
-            }
-        }
-
-        if (cached) {
-          console.log("Found cached cosmic data, re-hydrating...");
-          const parsedData = JSON.parse(cached);
-          setData(parsedData);
-          
-          // Re-initialize Database silently
-          const db = await initDatabase(parsedData, lat, lng);
-          setDbInstance(db);
-        }
-      } catch (e) {
-        console.error("Failed to load cached data", e);
-        localStorage.removeItem('vedicAstroData');
-      }
-    };
-    loadCachedData();
-  }, []);
-
   const handleRefresh = async () => {
     if (!data) return;
     setAnalyzing(true);
@@ -408,7 +349,19 @@ const App: React.FC = () => {
       localStorage.setItem('vedicUserGender', val);
   };
 
-  const finalizeData = async (finalData: AnalysisResult) => {
+  const finalizeData = async (
+    finalData: AnalysisResult,
+    persistSnapshot?: {
+      name: string;
+      gender?: string;
+      dob: string;
+      tob: string;
+      city?: string;
+      lat: string;
+      lon: string;
+      timezone: string | number;
+    },
+  ) => {
       setData(finalData);
       try {
         localStorage.setItem('vedicAstroData', JSON.stringify(finalData));
@@ -426,7 +379,7 @@ const App: React.FC = () => {
       }
       try {
         const token = localStorage.getItem('auth_token');
-        const formData = {
+        const pf = persistSnapshot ?? {
           name: userName,
           gender: userGender,
           dob,
@@ -434,18 +387,18 @@ const App: React.FC = () => {
           city: pobQuery,
           lat,
           lon,
-          timezone,
+          timezone: String(timezone),
         };
-        if (token && formData) {
+        if (token && pf.dob && pf.tob) {
           await saveProfile({
-            name: formData.name || 'My Profile',
-            gender: formData.gender,
-            dateOfBirth: formData.dob,
-            timeOfBirth: formData.tob,
-            placeOfBirth: formData.city,
-            latitude: formData.lat ? parseFloat(formData.lat) : undefined,
-            longitude: formData.lon ? parseFloat(formData.lon) : undefined,
-            timezone: String(formData.timezone),
+            name: pf.name || 'My Profile',
+            gender: pf.gender,
+            dateOfBirth: pf.dob,
+            timeOfBirth: pf.tob,
+            placeOfBirth: pf.city,
+            latitude: pf.lat ? parseFloat(pf.lat) : undefined,
+            longitude: pf.lon ? parseFloat(pf.lon) : undefined,
+            timezone: String(pf.timezone),
           });
           const profiles = await getMyProfiles();
           setSavedProfiles(profiles);
@@ -455,6 +408,7 @@ const App: React.FC = () => {
           setProfileSaveError('You have reached the maximum of 2 profiles. Please delete one to add a new person.');
         }
       }
+      return db;
   };
 
   const handleConsentAccept = () => {
@@ -711,8 +665,28 @@ const App: React.FC = () => {
       return parsed;
   };
 
-  const handleGenerateChart = async () => {
-    if (!dob || !tob || !lat || !lon) {
+  type GenerateChartOverrides = {
+    dob: string;
+    tob: string;
+    lat: string;
+    lon: string;
+    timezone: number;
+    userName?: string;
+    placeOfBirth?: string;
+    gender?: string;
+  };
+
+  const handleGenerateChart = async (overrides?: GenerateChartOverrides) => {
+    const dobVal = overrides?.dob ?? dob;
+    const tobVal = overrides?.tob ?? tob;
+    const latVal = overrides?.lat ?? lat;
+    const lonVal = overrides?.lon ?? lon;
+    const tzVal = overrides?.timezone ?? timezone;
+    const nameVal = overrides?.userName ?? userName;
+    const pobVal = overrides?.placeOfBirth ?? pobQuery;
+    const genderVal = overrides?.gender ?? userGender;
+
+    if (!dobVal || !tobVal || !latVal || !lonVal) {
         setError("Please fill in Date, Time, Latitude, and Longitude.");
         return;
     }
@@ -720,13 +694,13 @@ const App: React.FC = () => {
     setError(null);
 
     try {
-        const { date_of_birth, time_of_birth } = convertToISTForAPI(dob, tob, timezone);
+        const { date_of_birth, time_of_birth } = convertToISTForAPI(dobVal, tobVal, tzVal);
         const payload = {
             date_of_birth,
             time_of_birth,
-            latitude: parseFloat(lat),
-            longitude: parseFloat(lon),
-            timezone: timezone
+            latitude: parseFloat(latVal),
+            longitude: parseFloat(lonVal),
+            timezone: tzVal
         };
         const apiBaseUrl = (import.meta as any).env.VITE_API_URL || "";
         let parsed: any = {};
@@ -748,7 +722,7 @@ const App: React.FC = () => {
             
             parsed = await res.json();
             // Correcting data based on your specific location/timezone logic
-            parsed = enrichRawData(parsed, timezone, lon);
+            parsed = enrichRawData(parsed, tzVal, lonVal);
             
         } catch (fetchErr: any) {
             console.error("API Fetch Error:", fetchErr);
@@ -765,19 +739,19 @@ const App: React.FC = () => {
         }, {});
 
         const basicDetailsObj = parsed.Basic_Details || parsed.Traditional || {};
-        if (userName) basicDetailsObj['Name'] = userName;
-        if (userGender && userGender !== 'Prefer not to say') basicDetailsObj['Gender'] = userGender;
-        if (dob) {
-            const [y, m, d] = dob.split('-');
+        if (nameVal) basicDetailsObj['Name'] = nameVal;
+        if (genderVal && genderVal !== 'Prefer not to say') basicDetailsObj['Gender'] = genderVal;
+        if (dobVal) {
+            const [y, m, d] = dobVal.split('-');
             basicDetailsObj['Date_of_Birth'] = `${d}/${m}/${y}`;
         }
-        if (tob) basicDetailsObj['Time_of_Birth'] = tob;
-        if (pobQuery) basicDetailsObj['Place_of_Birth'] = pobQuery;
+        if (tobVal) basicDetailsObj['Time_of_Birth'] = tobVal;
+        if (pobVal) basicDetailsObj['Place_of_Birth'] = pobVal;
         
         const combinedData: Partial<RawInput> = {
             Personal: {
-                dob: parsed.Varshphal_Details?.Date_of_Birth || dob,
-                city: parsed.Varshphal_Details?.Birth_City || pobQuery,
+                dob: parsed.Varshphal_Details?.Date_of_Birth || dobVal,
+                city: parsed.Varshphal_Details?.Birth_City || pobVal,
                 lagna: parsed.Varshphal_Details?.Varshphal_Lagna || "Aries",
                 muntha: parsed.Varshphal_Details?.Muntha_Bhav || "1",
                 Will_Power_Score: parsed.ATPT?.['Willpower Score'] || parsed.Derived_Metrics?.Willpower_Score || 0
@@ -797,7 +771,7 @@ const App: React.FC = () => {
             avkahadaChakra: parsed.Avakahada_Chakra || parsed.avkahadaChakra || {},
             basicDetails: basicDetailsObj,
             favourablePoints: parsed.Favourable_Points || parsed.favourablePoints || {},
-            ghatak: { ...(parsed.Ghatak || parsed.ghatak || {}), Gender: userGender },
+            ghatak: { ...(parsed.Ghatak || parsed.ghatak || {}), Gender: genderVal },
             knowledgeBase: [],
             charts: parsed.charts || [],
             Varshphal_Details: parsed.Varshphal_Details || undefined
@@ -821,15 +795,29 @@ const App: React.FC = () => {
             setMissingDataOptions(missing);
             setSelectedCalculations(missing);
             setShowCalculationModal(true);
-        } else {
-            await finalizeData(result);
+            setAnalyzing(false);
+            return null;
         }
+        const persistSnapshot = overrides
+          ? {
+              name: nameVal || 'My Profile',
+              gender: genderVal,
+              dob: dobVal,
+              tob: tobVal,
+              city: pobVal,
+              lat: latVal,
+              lon: lonVal,
+              timezone: tzVal,
+            }
+          : undefined;
+        return await finalizeData(result, persistSnapshot);
 
     } catch (err: any) {
         console.error(err);
         setError(err.message || "Failed to generate chart from API.");
         setAnalyzing(false);
     }
+    return null;
 };
 
 
@@ -941,12 +929,140 @@ const App: React.FC = () => {
     }
   };
   
-  const initChatSession = async (selectedLang: string) => {
-      if (!dbInstance) return;
+  const initChatSession = async (selectedLang: string, dbOverride?: any) => {
+      const db = dbOverride ?? dbInstance;
+      if (!db) return;
       setLanguage(selectedLang);
-      const chat = await createChatSession(dbInstance, selectedLang, cultureMode);
+      const chat = await createChatSession(db, selectedLang, cultureMode);
       setChatSession(chat);
   };
+
+  // --- PERSISTENCE + server profile bootstrap (runs once after login) ---
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCachedUserPrefs = () => {
+      try {
+        const cachedPhoto = localStorage.getItem('vedicUserPhoto');
+        const cachedPalm = localStorage.getItem('vedicUserPalm');
+        const cachedAge = localStorage.getItem('vedicUserAge');
+        const cachedGotra = localStorage.getItem('vedicUserGotra');
+        const cachedMood = localStorage.getItem('vedicUserMood');
+        const cachedGender = localStorage.getItem('vedicUserGender');
+        const cachedPalmDate = localStorage.getItem('vedicUserPalmDate');
+        const cachedLoc = localStorage.getItem('vedicUserLocation');
+        const cachedTimezoneName = localStorage.getItem('vedicUserTimezoneName');
+        const cachedTimezone = localStorage.getItem('vedicUserTimezone');
+
+        if (cachedPhoto) setUserPhoto(cachedPhoto);
+        if (cachedPalm) setUserPalm(cachedPalm);
+        if (cachedAge) setUserAge(cachedAge);
+        if (cachedGotra) setUserGotra(cachedGotra);
+        if (cachedMood) setUserMood(cachedMood);
+        if (cachedGender) setUserGender(cachedGender);
+        if (cachedPalmDate) setPalmImageDate(cachedPalmDate);
+        if (cachedTimezoneName) setTimezoneName(cachedTimezoneName);
+        if (cachedTimezone) setTimezone(parseFloat(cachedTimezone));
+
+        const cachedConsent = localStorage.getItem('vedicConsentVersion');
+        if (cachedConsent === CONSENT_VERSION) {
+          setHasConsent(true);
+          setConsentResearch(localStorage.getItem('vedicConsentResearch') === 'true');
+          setConsentPartnerShare(localStorage.getItem('vedicConsentPartnerShare') === 'true');
+        }
+
+        if (cachedLoc && cachedLoc.includes(',')) {
+          const [la, ln] = cachedLoc.split(',').map(s => parseFloat(s.trim()));
+          if (!isNaN(la) && !isNaN(ln)) {
+            setUserLocation({ lat: la, lng: ln });
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load cached user prefs', e);
+      }
+    };
+
+    const loadCachedChart = async () => {
+      try {
+        const cached = localStorage.getItem('vedicAstroData');
+        const cachedLoc = localStorage.getItem('vedicUserLocation');
+        let latCached: number | undefined;
+        let lngCached: number | undefined;
+        if (cachedLoc && cachedLoc.includes(',')) {
+          const [la, ln] = cachedLoc.split(',').map(s => parseFloat(s.trim()));
+          if (!isNaN(la) && !isNaN(ln)) {
+            latCached = la;
+            lngCached = ln;
+          }
+        }
+        if (cached) {
+          console.log('Found cached cosmic data, re-hydrating...');
+          const parsedData = JSON.parse(cached);
+          setData(parsedData);
+          const db = await initDatabase(parsedData, latCached, lngCached);
+          setDbInstance(db);
+        }
+      } catch (e) {
+        console.error('Failed to load cached chart', e);
+        localStorage.removeItem('vedicAstroData');
+      }
+    };
+
+    const bootstrapFromServerProfile = async (): Promise<any | null> => {
+      const profiles = await getMyProfiles();
+      if (cancelled || !profiles?.length) return null;
+      const p = profiles[0];
+      setSavedProfiles(profiles);
+
+      const profileDob = p.dateOfBirth || '';
+      const profileTob = p.timeOfBirth || '';
+      const profileLat = p.latitude != null && p.latitude !== '' ? String(p.latitude) : '';
+      const profileLon = p.longitude != null && p.longitude !== '' ? String(p.longitude) : '';
+      const profileTzRaw = p.timezone != null && p.timezone !== '' ? parseFloat(String(p.timezone)) : NaN;
+      const profileTz = Number.isFinite(profileTzRaw) ? profileTzRaw : 5.5;
+
+      if (!profileDob || !profileTob || !profileLat || !profileLon) return null;
+
+      setDob(profileDob);
+      setTob(profileTob);
+      setLat(profileLat);
+      setLon(profileLon);
+      setTimezone(profileTz);
+      if (p.name) setUserName(p.name);
+      if (p.placeOfBirth) setPobQuery(p.placeOfBirth);
+      if (p.gender) setUserGender(p.gender);
+
+      const db = await handleGenerateChart({
+        dob: profileDob,
+        tob: profileTob,
+        lat: profileLat,
+        lon: profileLon,
+        timezone: profileTz,
+        userName: p.name,
+        placeOfBirth: p.placeOfBirth || undefined,
+        gender: p.gender || undefined,
+      });
+      return db ?? null;
+    };
+
+    (async () => {
+      loadCachedUserPrefs();
+      if (cancelled) return;
+      const dbFromProfile = await bootstrapFromServerProfile();
+      if (cancelled) return;
+      if (dbFromProfile) {
+        const lang = localStorage.getItem('vedicLanguage') || 'English';
+        setLanguage(lang);
+        await initChatSession(lang, dbFromProfile);
+        return;
+      }
+      await loadCachedChart();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleFAQAsk = (question: string) => {
       if (question.includes("prediction for today")) {
@@ -1201,7 +1317,7 @@ const App: React.FC = () => {
                     {/* Prominent Continue Button */}
                     <div className="flex gap-4">
                         <button 
-                            onClick={handleGenerateChart}
+                            onClick={() => { void handleGenerateChart(); }}
                             disabled={!dob || !tob || !lat || !lon}
                             className={`flex-1 py-4 rounded-2xl font-serif font-bold text-lg shadow-xl flex items-center justify-center gap-3 group transition-all duration-500 ${
                                 (!dob || !tob || !lat || !lon) 
