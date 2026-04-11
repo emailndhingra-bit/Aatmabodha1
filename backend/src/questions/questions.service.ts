@@ -31,10 +31,10 @@ export class QuestionsService {
     response: string;
     language?: string;
     cacheHit?: boolean;
+    costUsd?: number;
   }): Promise<QuestionLog> {
     const inputTokens  = this.estimateTokens(data.question);
     const outputTokens = this.estimateTokens(data.response);
-    const costUsd = data.cacheHit ? 0 : this.estimateCost(inputTokens, outputTokens);
 
     const log = this.repo.create({
       userHash:        this.hashUser(data.userId),
@@ -42,7 +42,7 @@ export class QuestionsService {
       responsePreview: data.response.substring(0, 200),
       inputTokens,
       outputTokens,
-      costUsd,
+      costUsd:         data.costUsd || 0,
       language:        data.language || 'EN',
       cacheHit:        data.cacheHit || false,
     });

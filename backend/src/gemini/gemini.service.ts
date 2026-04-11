@@ -83,6 +83,7 @@ export class GeminiService {
             response: text,
             language: body.language,
             cacheHit: false,
+            costUsd,
           })
           .catch(() => {});
       }
@@ -208,6 +209,7 @@ export class GeminiService {
             response: text,
             language: body.language || 'EN',
             cacheHit: contextCacheHit,
+            costUsd,
           })
           .catch(() => {});
       }
