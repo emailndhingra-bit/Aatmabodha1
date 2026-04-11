@@ -47,6 +47,30 @@ export class GeminiService {
       .digest('hex');
   }
 
+  /** Gemini REST `generateContent` JSON includes `usageMetadata` when available. */
+  private costFromUsageMetadata(data: any): {
+    inputTokens: number;
+    outputTokens: number;
+    cachedTokens: number;
+    costUsd: number;
+  } | null {
+    const usage = data?.usageMetadata;
+    if (!usage || typeof usage.promptTokenCount !== 'number') return null;
+    const inputTokens = usage.promptTokenCount;
+    const outputTokens =
+      typeof usage.candidatesTokenCount === 'number' ? usage.candidatesTokenCount : 0;
+    const cachedTokens =
+      typeof usage.cachedContentTokenCount === 'number'
+        ? usage.cachedContentTokenCount
+        : 0;
+    const cachedInputCost = (cachedTokens * 0.135) / 1e6;
+    const uncachedInputCost = (Math.max(0, inputTokens - cachedTokens) * 1.25) / 1e6;
+    const outputCost = (outputTokens * 10.0) / 1e6;
+    const costUsd =
+      Math.round((cachedInputCost + uncachedInputCost + outputCost) * 1e6) / 1e6;
+    return { inputTokens, outputTokens, cachedTokens, costUsd };
+  }
+
   async generateContent(body: any, userId?: string): Promise<any> {
     const { prompt, responseFormat, imageParts = [] } = body;
     const inflightKey = `${(prompt || '').substring(0, 100)}${responseFormat ?? ''}`;
@@ -71,9 +95,19 @@ export class GeminiService {
       const data = await res.json();
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-      const inputTokens = this.questionsService.estimateTokens(prompt);
-      const outputTokens = this.questionsService.estimateTokens(text);
-      const costUsd = this.questionsService.estimateCost(inputTokens, outputTokens);
+      const fromUsage = this.costFromUsageMetadata(data);
+      let inputTokens: number;
+      let outputTokens: number;
+      let costUsd: number;
+      if (fromUsage) {
+        inputTokens = fromUsage.inputTokens;
+        outputTokens = fromUsage.outputTokens;
+        costUsd = fromUsage.costUsd;
+      } else {
+        inputTokens = this.questionsService.estimateTokens(prompt);
+        outputTokens = this.questionsService.estimateTokens(text);
+        costUsd = this.questionsService.estimateCost(inputTokens, outputTokens);
+      }
 
       if (userId) {
         await this.questionsService
@@ -197,9 +231,19 @@ export class GeminiService {
       const data = await res.json();
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-      const inputTokens = this.questionsService.estimateTokens(message);
-      const outputTokens = this.questionsService.estimateTokens(text);
-      const costUsd = this.questionsService.estimateCost(inputTokens, outputTokens);
+      const fromUsage = this.costFromUsageMetadata(data);
+      let inputTokens: number;
+      let outputTokens: number;
+      let costUsd: number;
+      if (fromUsage) {
+        inputTokens = fromUsage.inputTokens;
+        outputTokens = fromUsage.outputTokens;
+        costUsd = fromUsage.costUsd;
+      } else {
+        inputTokens = this.questionsService.estimateTokens(message);
+        outputTokens = this.questionsService.estimateTokens(text);
+        costUsd = this.questionsService.estimateCost(inputTokens, outputTokens);
+      }
 
       if (userId) {
         await this.questionsService
