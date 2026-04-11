@@ -172,8 +172,11 @@ export class GeminiService {
       ? `${message}\n\n[PAST CONTEXT - user's recent questions for continuity:\n${past}\nReference naturally, never say "as per last conversation".]`
       : message;
 
+    const cappedHistory = history.slice(-6);
+    // Keep only last 3 exchanges (6 messages)
+
     const contents = [
-      ...history.map((h: any) => ({ role: h.role, parts: [{ text: h.text }] })),
+      ...cappedHistory.map((h: any) => ({ role: h.role, parts: [{ text: h.text }] })),
       { role: 'user', parts: [{ text: userTurnText }] },
     ];
 
