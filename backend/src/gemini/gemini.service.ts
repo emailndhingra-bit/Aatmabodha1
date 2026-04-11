@@ -2,6 +2,15 @@ import { createHash } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { QuestionsService } from '../questions/questions.service';
 
+/** Chat generateContent: Render cold starts + Gemini can exceed 30s easily */
+const CHAT_GENERATE_TIMEOUT_MS = 180_000;
+
+function isAbortError(err: unknown): boolean {
+  if (err instanceof Error && err.name === 'AbortError') return true;
+  if (typeof DOMException !== 'undefined' && err instanceof DOMException && err.name === 'AbortError') return true;
+  return false;
+}
+
 @Injectable()
 export class GeminiService {
   private readonly apiKey = process.env.GEMINI_API_KEY || '';
@@ -130,7 +139,7 @@ export class GeminiService {
     }
 
     const genController = new AbortController();
-    const genTimeout = setTimeout(() => genController.abort(), 30000);
+    const genTimeout = setTimeout(() => genController.abort(), CHAT_GENERATE_TIMEOUT_MS);
     try {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
@@ -161,6 +170,19 @@ export class GeminiService {
       }
 
       return { text, cacheHit: false, costUsd, inputTokens, outputTokens };
+    } catch (err: unknown) {
+      if (isAbortError(err)) {
+        console.warn('[Gemini chat] generateContent aborted (timeout or client disconnect)');
+        return {
+          text: '',
+          cacheHit: false,
+          costUsd: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          error: 'The model request timed out. Please try again.',
+        };
+      }
+      throw err;
     } finally {
       clearTimeout(genTimeout);
     }
