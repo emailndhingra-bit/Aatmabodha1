@@ -53,6 +53,10 @@ export class UsersService {
     return this.updateUser(id, { questionsUsed: user.questionsUsed + 1 });
   }
 
+  async incrementQuestionsUsed(id: string): Promise<void> {
+    await this.usersRepository.increment({ id }, 'questionsUsed', 1);
+  }
+
   async canAskQuestion(id: string): Promise<boolean> {
     const user = await this.findById(id);
     return user.status === UserStatus.APPROVED && user.questionsUsed < user.questionsLimit;

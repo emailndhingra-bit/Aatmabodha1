@@ -1,8 +1,20 @@
-import { Controller, Post, Get, Body, Req, Query, UseGuards, UnauthorizedException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Req,
+  Query,
+  UseGuards,
+  UnauthorizedException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { GeminiService } from './gemini.service';
 import { QuestionsService } from '../questions/questions.service';
 import { ReportsService } from '../reports/reports.service';
+import { UsersService } from '../users/users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtGuard } from '../auth/guards/optional-jwt.guard';
 
 @Controller('')
 export class GeminiController {
@@ -10,6 +22,7 @@ export class GeminiController {
     private readonly geminiService: GeminiService,
     private readonly questionsService: QuestionsService,
     private readonly reportsService: ReportsService,
+    private readonly usersService: UsersService,
   ) {}
 
   private assertAdminEmail(req: any): void {
@@ -19,15 +32,41 @@ export class GeminiController {
   }
 
   @Post('gemini')
+  @UseGuards(OptionalJwtGuard)
   async geminiProxy(@Body() body: any, @Req() req: any) {
     const userId = req.user?.id;
-    return this.geminiService.generateContent(body, userId);
+    if (userId) {
+      const user = await this.usersService.findById(userId);
+      if (!user) throw new UnauthorizedException('User not found');
+      if (user.status !== 'approved') throw new ForbiddenException('Account not approved');
+      if (user.questionsUsed >= user.questionsLimit) {
+        throw new ForbiddenException('Question limit reached (' + user.questionsLimit + ' questions)');
+      }
+    }
+    const result = await this.geminiService.generateContent(body, userId);
+    if (userId) {
+      await this.usersService.incrementQuestionsUsed(userId).catch(() => {});
+    }
+    return result;
   }
 
   @Post('gemini-chat')
+  @UseGuards(OptionalJwtGuard)
   async geminiChat(@Body() body: any, @Req() req: any) {
     const userId = req.user?.id;
-    return this.geminiService.chat(body, userId);
+    if (userId) {
+      const user = await this.usersService.findById(userId);
+      if (!user) throw new UnauthorizedException('User not found');
+      if (user.status !== 'approved') throw new ForbiddenException('Account not approved');
+      if (user.questionsUsed >= user.questionsLimit) {
+        throw new ForbiddenException('Question limit reached (' + user.questionsLimit + ' questions)');
+      }
+    }
+    const result = await this.geminiService.chat(body, userId);
+    if (userId) {
+      await this.usersService.incrementQuestionsUsed(userId).catch(() => {});
+    }
+    return result;
   }
 
   @Post('gemini-image')
