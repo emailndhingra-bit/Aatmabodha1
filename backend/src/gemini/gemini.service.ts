@@ -1,137 +1,147 @@
 import { Injectable } from '@nestjs/common';
 import { QuestionsService } from '../questions/questions.service';
 
-interface CacheEntry {
-  text: string;
-  timestamp: number;
-}
-
 @Injectable()
 export class GeminiService {
   private readonly apiKey = process.env.GEMINI_API_KEY || '';
   private readonly model = 'gemini-3.1-pro-preview';
-  private readonly cache = new Map<string, CacheEntry>();
-  private readonly CACHE_TTL = 1000 * 60 * 60 * 6;
+
+  private readonly inflightRequests = new Map<string, Promise<any>>();
+  private readonly contextCache = new Map<string, { name: string; expiresAt: number }>();
 
   constructor(private questionsService: QuestionsService) {}
 
-  private getCacheKey(prompt: string): string {
-    return prompt.substring(0, 200).toLowerCase().replace(/\s+/g, ' ').trim();
-  }
-
-  private getFromCache(key: string): string | null {
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-    if (Date.now() - entry.timestamp > this.CACHE_TTL) {
-      this.cache.delete(key);
-      return null;
-    }
-    return entry.text;
-  }
-
-  private setCache(key: string, text: string): void {
-    if (this.cache.size > 1000) {
-      const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
-    }
-    this.cache.set(key, { text, timestamp: Date.now() });
-  }
-
   async generateContent(body: any, userId?: string): Promise<any> {
     const { prompt, responseFormat, imageParts = [] } = body;
-    const cacheKey = this.getCacheKey(prompt);
-    const cached = imageParts.length === 0 ? this.getFromCache(cacheKey) : null;
+    const inflightKey = `${(prompt || '').substring(0, 100)}${responseFormat ?? ''}`;
 
-    if (cached) {
+    const run = async (): Promise<any> => {
+      const parts: any[] = imageParts.map((img: any) => ({
+        inlineData: { mimeType: img.mimeType, data: img.data },
+      }));
+      parts.push({ text: prompt });
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig: responseFormat === 'json' ? { responseMimeType: 'application/json' } : {},
+          }),
+        },
+      );
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+      const inputTokens = this.questionsService.estimateTokens(prompt);
+      const outputTokens = this.questionsService.estimateTokens(text);
+      const costUsd = this.questionsService.estimateCost(inputTokens, outputTokens);
+
       if (userId) {
-        await this.questionsService.logQuestion({
-          userId, question: prompt, response: cached,
-          language: body.language, cacheHit: true,
-        }).catch(() => {});
+        await this.questionsService
+          .logQuestion({
+            userId,
+            question: prompt,
+            response: text,
+            language: body.language,
+            cacheHit: false,
+          })
+          .catch(() => {});
       }
-      return { text: cached, cacheHit: true, costUsd: 0 };
+
+      return { text, cacheHit: false, costUsd, inputTokens, outputTokens };
+    };
+
+    if (imageParts.length > 0) {
+      return run();
     }
 
-    const parts: any[] = imageParts.map((img: any) => ({
-      inlineData: { mimeType: img.mimeType, data: img.data }
-    }));
-    parts.push({ text: prompt });
-
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts }],
-          generationConfig: responseFormat === 'json' ? { responseMimeType: 'application/json' } : {}
-        })
-      }
-    );
-    const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-    if (imageParts.length === 0) this.setCache(cacheKey, text);
-
-    const inputTokens  = this.questionsService.estimateTokens(prompt);
-    const outputTokens = this.questionsService.estimateTokens(text);
-    const costUsd = this.questionsService.estimateCost(inputTokens, outputTokens);
-
-    if (userId) {
-      await this.questionsService.logQuestion({
-        userId, question: prompt, response: text,
-        language: body.language, cacheHit: false,
-      }).catch(() => {});
+    let p = this.inflightRequests.get(inflightKey);
+    if (!p) {
+      p = run().finally(() => this.inflightRequests.delete(inflightKey));
+      this.inflightRequests.set(inflightKey, p);
     }
-
-    return { text, cacheHit: false, costUsd, inputTokens, outputTokens };
+    return p;
   }
 
   async chat(body: any, userId?: string): Promise<any> {
     const { systemInstruction, history = [], message } = body;
-    const cacheKey = this.getCacheKey(message);
-    const cached = this.getFromCache(cacheKey);
-
-    if (cached) {
-      if (userId) {
-        await this.questionsService.logQuestion({
-          userId, question: message, response: cached,
-          language: body.language, cacheHit: true,
-        }).catch(() => {});
-      }
-      return { text: cached, cacheHit: true, costUsd: 0 };
-    }
-
     const contents = [
       ...history.map((h: any) => ({ role: h.role, parts: [{ text: h.text }] })),
-      { role: 'user', parts: [{ text: message }] }
+      { role: 'user', parts: [{ text: message }] },
     ];
+
+    let cachedContentName: string | null = null;
+
+    if (userId && systemInstruction) {
+      const entry = this.contextCache.get(userId);
+      if (entry && Date.now() < entry.expiresAt) {
+        cachedContentName = entry.name;
+        console.log('[ContextCache] Hit:', cachedContentName);
+      } else {
+        try {
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/cachedContents?key=${this.apiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'models/gemini-3.1-pro-preview',
+                systemInstruction: { parts: [{ text: systemInstruction }] },
+                ttl: '3600s',
+                contents: [],
+              }),
+            },
+          );
+          const created = await res.json();
+          if (!res.ok) {
+            throw new Error(created?.error?.message || `HTTP ${res.status}`);
+          }
+          const name = created.name as string;
+          this.contextCache.set(userId, { name, expiresAt: Date.now() + 3500000 });
+          cachedContentName = name;
+          console.log('[ContextCache] Created:', name);
+        } catch {
+          console.warn('[ContextCache] Failed, using direct call');
+          cachedContentName = null;
+        }
+      }
+    }
+
+    const payload: Record<string, unknown> = { contents };
+    if (cachedContentName) {
+      payload.cachedContent = cachedContentName;
+    } else if (systemInstruction) {
+      payload.systemInstruction = { parts: [{ text: systemInstruction }] };
+    }
 
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined,
-          contents
-        })
-      }
+        body: JSON.stringify(payload),
+      },
     );
     const data = await res.json();
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-    this.setCache(cacheKey, text);
-
-    const inputTokens  = this.questionsService.estimateTokens(message);
+    const inputTokens = this.questionsService.estimateTokens(message);
     const outputTokens = this.questionsService.estimateTokens(text);
     const costUsd = this.questionsService.estimateCost(inputTokens, outputTokens);
 
     if (userId) {
-      await this.questionsService.logQuestion({
-        userId, question: message, response: text,
-        language: body.language, cacheHit: false,
-      }).catch(() => {});
+      await this.questionsService
+        .logQuestion({
+          userId,
+          question: message,
+          response: text,
+          language: body.language,
+          cacheHit: false,
+        })
+        .catch(() => {});
     }
 
     return { text, cacheHit: false, costUsd, inputTokens, outputTokens };
@@ -140,7 +150,7 @@ export class GeminiService {
   async generateImage(body: any): Promise<any> {
     const { prompt, imageParts = [] } = body;
     const parts: any[] = imageParts.map((img: any) => ({
-      inlineData: { mimeType: img.mimeType, data: img.data }
+      inlineData: { mimeType: img.mimeType, data: img.data },
     }));
     parts.push({ text: prompt });
 
@@ -151,9 +161,9 @@ export class GeminiService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts }],
-          generationConfig: { responseModalities: ['IMAGE', 'TEXT'] }
-        })
-      }
+          generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+        }),
+      },
     );
     const data = await res.json();
     for (const part of data?.candidates?.[0]?.content?.parts || []) {
@@ -165,6 +175,11 @@ export class GeminiService {
   }
 
   getCacheStats() {
-    return { size: this.cache.size, maxSize: 1000, ttlHours: 6 };
+    return {
+      size: this.contextCache.size,
+      maxSize: 0,
+      ttlHours: 1,
+      note: 'Gemini Native Context Caching - $0.20/1M vs $2.00/1M',
+    };
   }
 }
