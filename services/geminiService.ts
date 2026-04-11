@@ -13,6 +13,16 @@ const BACKEND_URL =
     "https://aatmabodha1-backend.onrender.com";
 const GEMINI_MODEL = "gemini-3.1-pro-preview";
 
+/** JSON POSTs to Nest proxy — Bearer token so OptionalJwtGuard can set req.user */
+const jsonAuthHeaders = (): Record<string, string> => {
+    const token =
+        typeof localStorage !== "undefined" ? localStorage.getItem("auth_token") : null;
+    return {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+};
+
 const REPORT_LOG_TITLES: Record<string, string> = {
     life_book: "Life Book",
     hidden_gems: "Hidden Gems",
@@ -59,7 +69,7 @@ const callGemini = async (
 ): Promise<string> => {
     const res = await fetch(`${BACKEND_URL}/api/gemini`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonAuthHeaders(),
         body: JSON.stringify({
             model: GEMINI_MODEL,
             prompt,
@@ -87,7 +97,7 @@ const callGeminiChat = async (
 ): Promise<GeminiChatResult> => {
     const res = await fetch(`${BACKEND_URL}/api/gemini-chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonAuthHeaders(),
         body: JSON.stringify({
             model: GEMINI_MODEL,
             systemInstruction,
