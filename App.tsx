@@ -1324,7 +1324,11 @@ const App: React.FC = () => {
 
             {/* VIEW MODE: DAILY FORECAST */}
             <div className={viewMode === 'daily' ? 'block' : 'hidden'}>
-                <DailyForecast db={dbInstance} />
+                <DailyForecast
+                  db={dbInstance}
+                  profileName={userName || 'Profile'}
+                  language={cultureMode === 'JP' ? 'JP' : cultureMode === 'HI' ? 'HI' : 'EN'}
+                />
             </div>
 
             {/* VIEW MODE: DASHBOARD */}

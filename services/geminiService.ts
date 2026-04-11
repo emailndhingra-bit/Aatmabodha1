@@ -7,8 +7,47 @@ import { ORACLE_RULES } from "./oracleRules";
 // Never call Gemini directly from the browser.
 // Set NEXT_PUBLIC_BACKEND_URL in your .env.local and on Vercel.
 // ─────────────────────────────────────────────────────────────
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://aatmabodha1-backend.onrender.com";
+const BACKEND_URL =
+    (typeof import.meta !== "undefined" && (import.meta as ImportMeta & { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL) ||
+    (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_BACKEND_URL : undefined) ||
+    "https://aatmabodha1-backend.onrender.com";
 const GEMINI_MODEL = "gemini-3.1-pro-preview";
+
+const REPORT_LOG_TITLES: Record<string, string> = {
+    life_book: "Life Book",
+    hidden_gems: "Hidden Gems",
+    daily_forecast: "Daily Forecast",
+    btr: "Birth Time Rectification",
+};
+
+const titleFromReportType = (reportType: string): string =>
+    REPORT_LOG_TITLES[reportType] ||
+    reportType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+/** POST /api/reports/log — fire-and-forget; skips if no auth_token */
+const postReportLog = (opts: {
+    profileName: string;
+    reportType: string;
+    contentValue: unknown;
+    language: string;
+}): void => {
+    if (typeof localStorage === "undefined") return;
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+    const content = JSON.stringify(opts.contentValue ?? "").substring(0, 500);
+    const body = {
+        profileName: opts.profileName || "Profile",
+        reportType: opts.reportType,
+        title: titleFromReportType(opts.reportType),
+        content,
+        language: opts.language || "EN",
+    };
+    void fetch(`${BACKEND_URL}/api/reports/log`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+    }).catch(() => {});
+};
 
 // ─────────────────────────────────────────────────────────────
 // Core helper — sends prompt to Flask /api/gemini
@@ -420,7 +459,11 @@ export const generateCosmicImage = async (prompt: string, userPhoto?: string, us
 // ─────────────────────────────────────────────────────────────
 // Generate Life Book AI
 // ─────────────────────────────────────────────────────────────
-export const generateLifeBookAI = async (db: any): Promise<BookChapter[] | undefined> => {
+export const generateLifeBookAI = async (
+    db: any,
+    profileName?: string,
+    language: string = "EN",
+): Promise<BookChapter[] | undefined> => {
     const context = generateVirtualFileContext(db, false);
     const prompt = `Based on this chart, write the "Book of Life". Divide the life into 5-7 distinct chapters based on Dasha periods and major transits. 
     For each chapter, provide:
@@ -434,7 +477,16 @@ export const generateLifeBookAI = async (db: any): Promise<BookChapter[] | undef
 
     try {
         const text = await callGemini("CONTEXT:\n" + context + "\n\nTASK:\n" + prompt, "json");
-        if (text) return JSON.parse(text);
+        if (text) {
+            const parsed = JSON.parse(text);
+            postReportLog({
+                profileName: profileName ?? "Profile",
+                reportType: "life_book",
+                contentValue: parsed,
+                language,
+            });
+            return parsed;
+        }
     } catch (e) { console.error(e); }
     return undefined;
 };
@@ -442,7 +494,13 @@ export const generateLifeBookAI = async (db: any): Promise<BookChapter[] | undef
 // ─────────────────────────────────────────────────────────────
 // Birth Time Rectification
 // ─────────────────────────────────────────────────────────────
-export const generateBirthTimeRectification = async (db: any, photo?: string | null, palm?: string | null): Promise<RectificationResult | undefined> => {
+export const generateBirthTimeRectification = async (
+    db: any,
+    photo?: string | null,
+    palm?: string | null,
+    profileName?: string,
+    language: string = "EN",
+): Promise<RectificationResult | undefined> => {
     const context = generateVirtualFileContext(db, false);
     const imageParts: { mimeType: string; data: string }[] = [];
 
@@ -471,7 +529,16 @@ Output JSON: { "confidenceScore": number, "verdict": "string", "visualMatchAnaly
 
     try {
         const text = await callGemini(prompt, "json", imageParts.length > 0 ? imageParts : undefined);
-        if (text) return JSON.parse(text);
+        if (text) {
+            const parsed = JSON.parse(text);
+            postReportLog({
+                profileName: profileName ?? "Profile",
+                reportType: "btr",
+                contentValue: parsed,
+                language,
+            });
+            return parsed;
+        }
     } catch (e) { console.error(e); }
     return undefined;
 };
@@ -599,14 +666,27 @@ The response should be in ${culture === 'HI' ? 'Hindi' : culture === 'JP' ? 'Jap
 // ─────────────────────────────────────────────────────────────
 // Generate Hidden Gems AI
 // ─────────────────────────────────────────────────────────────
-export const generateHiddenGemsAI = async (db: any): Promise<{strengths: Gem[], weaknesses: Gem[]}> => {
+export const generateHiddenGemsAI = async (
+    db: any,
+    profileName?: string,
+    language: string = "EN",
+): Promise<{strengths: Gem[], weaknesses: Gem[]}> => {
     const context = generateVirtualFileContext(db, false);
     const prompt = `Identify "Hidden Gems" (Strengths) and "Shadow Truths" (Weaknesses) in this chart. Focus on rare yogas, nakshatra secrets, and specific placements.
     Output JSON: { "strengths": [{ "id": "...", "type": "strength", "title": "...", "description": "...", "remedyTitle": "...", "remedy": "...", "tag": "...", "planet": "..." }], "weaknesses": [...] }`;
 
     try {
         const text = await callGemini("CONTEXT:\n" + context + "\n\nTASK:\n" + prompt, "json");
-        if (text) return JSON.parse(text);
+        if (text) {
+            const parsed = JSON.parse(text);
+            postReportLog({
+                profileName: profileName ?? "Profile",
+                reportType: "hidden_gems",
+                contentValue: parsed,
+                language,
+            });
+            return parsed;
+        }
     } catch (e) { console.error(e); }
     return { strengths: [], weaknesses: [] };
 };
@@ -614,7 +694,13 @@ export const generateHiddenGemsAI = async (db: any): Promise<{strengths: Gem[], 
 // ─────────────────────────────────────────────────────────────
 // Generate Daily Forecast
 // ─────────────────────────────────────────────────────────────
-export const generateDailyForecast = async (db: any, location: string, date: string): Promise<any> => {
+export const generateDailyForecast = async (
+    db: any,
+    location: string,
+    date: string,
+    profileName?: string,
+    language: string = "EN",
+): Promise<any> => {
     const context = generateVirtualFileContext(db, false);
     const prompt = `Generate a detailed Daily Forecast for Date: ${date} and Location: ${location}.
     Use the provided chart to calculate Gochar (Transits) effects specifically for this person.
@@ -636,7 +722,16 @@ export const generateDailyForecast = async (db: any, location: string, date: str
 
     try {
         const text = await callGemini("CONTEXT:\n" + context + "\n\nTASK:\n" + prompt, "json");
-        if (text) return JSON.parse(text);
+        if (text) {
+            const parsed = JSON.parse(text);
+            postReportLog({
+                profileName: profileName ?? "Profile",
+                reportType: "daily_forecast",
+                contentValue: parsed,
+                language,
+            });
+            return parsed;
+        }
     } catch (e) { console.error(e); }
     return null;
 };

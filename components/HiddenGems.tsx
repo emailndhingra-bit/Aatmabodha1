@@ -7,9 +7,11 @@ import { Search, Diamond, Zap, AlertTriangle, Sparkles, Feather, Lock, Key, Down
 interface Props {
   db: any;
   onClose: () => void;
+  profileName?: string;
+  language?: string;
 }
 
-const HiddenGems: React.FC<Props> = ({ db, onClose }) => {
+const HiddenGems: React.FC<Props> = ({ db, onClose, profileName = 'Profile', language = 'EN' }) => {
   const [activeTab, setActiveTab] = useState<'strengths' | 'weaknesses'>('strengths');
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -23,7 +25,7 @@ const HiddenGems: React.FC<Props> = ({ db, onClose }) => {
         setLoading(true);
         try {
             // Call the AI Service with Thinking Mode
-            const result = await generateHiddenGemsAI(db);
+            const result = await generateHiddenGemsAI(db, profileName, language);
             setData(result);
         } catch (e) {
             console.error(e);

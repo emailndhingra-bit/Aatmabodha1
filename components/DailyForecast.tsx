@@ -5,9 +5,11 @@ import { Loader2, Calendar, MapPin, Sun, Moon, Clock, Sparkles, AlertCircle, Shi
 
 interface Props {
   db: any;
+  profileName?: string;
+  language?: string;
 }
 
-const DailyForecast: React.FC<Props> = ({ db }) => {
+const DailyForecast: React.FC<Props> = ({ db, profileName = 'Profile', language = 'EN' }) => {
   const [loading, setLoading] = useState(false); // Initial loading state false
   const [data, setData] = useState<any>(null); // Full forecast data from AI
   const [localTransits, setLocalTransits] = useState<any[]>([]); // Instant DB data
@@ -121,7 +123,7 @@ const DailyForecast: React.FC<Props> = ({ db }) => {
           const dateForPrompt = dateObj.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
           // 5. Generate with AI
-          const result = await generateDailyForecast(db, loc, dateForPrompt);
+          const result = await generateDailyForecast(db, loc, dateForPrompt, profileName, language);
           
           if (result) {
               setData(result);

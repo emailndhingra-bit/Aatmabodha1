@@ -9,9 +9,11 @@ interface Props {
   userPhoto?: string | null;
   userPalm?: string | null;
   onClose: () => void;
+  profileName?: string;
+  language?: string;
 }
 
-const TimeRectification: React.FC<Props> = ({ db, userPhoto, userPalm, onClose }) => {
+const TimeRectification: React.FC<Props> = ({ db, userPhoto, userPalm, onClose, profileName = 'Profile', language = 'EN' }) => {
   const [status, setStatus] = useState<'idle' | 'analyzing' | 'result'>('idle');
   const [result, setResult] = useState<RectificationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +27,7 @@ const TimeRectification: React.FC<Props> = ({ db, userPhoto, userPalm, onClose }
       setStatus('analyzing');
       setError(null);
       try {
-          const res = await generateBirthTimeRectification(db, userPhoto, userPalm);
+          const res = await generateBirthTimeRectification(db, userPhoto, userPalm, profileName, language);
           if (res) {
               setResult(res);
               setStatus('result');
