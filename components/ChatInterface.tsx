@@ -1016,7 +1016,7 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
   
   const handleDetailedCopy = async () => {
      if(!copyModal) return;
-     const text = `🔮 *Aatmabodha Says:*\n\n${copyModal.answer}`;
+     const text = copyModal.answer;
      await navigator.clipboard.writeText(text);
      setCopySuccess(true);
      setTimeout(() => { setCopySuccess(false); setCopyModal(null); }, 1500);
