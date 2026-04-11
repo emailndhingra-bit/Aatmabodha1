@@ -61,4 +61,17 @@ export class QuestionsService {
   async getRecentQuestions(limit = 50): Promise<QuestionLog[]> {
     return this.repo.find({ order: { createdAt: 'DESC' }, take: limit });
   }
+
+  async getRecentByUser(
+    userId: string,
+    limit = 5,
+  ): Promise<Pick<QuestionLog, 'questionText' | 'createdAt' | 'language'>[]> {
+    const userHash = this.hashUser(userId);
+    return this.repo.find({
+      where: { userHash },
+      order: { createdAt: 'DESC' },
+      take: limit,
+      select: ['questionText', 'createdAt', 'language'],
+    });
+  }
 }

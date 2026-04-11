@@ -54,6 +54,7 @@ export class GeminiController {
   @UseGuards(OptionalJwtGuard)
   async geminiChat(@Body() body: any, @Req() req: any) {
     const userId = req.user?.id;
+    let chatBody = body;
     if (userId) {
       const user = await this.usersService.findById(userId);
       if (!user) throw new UnauthorizedException('User not found');
@@ -61,8 +62,18 @@ export class GeminiController {
       if (user.questionsUsed >= user.questionsLimit) {
         throw new ForbiddenException('Question limit reached (' + user.questionsLimit + ' questions)');
       }
+      const recentQs = await this.questionsService.getRecentByUser(userId, 5);
+      const pastContext = recentQs
+        .map((q) => {
+          const daysAgo = Math.floor(
+            (Date.now() - new Date(q.createdAt).getTime()) / 86400000,
+          );
+          return `${daysAgo === 0 ? 'Aaj' : `${daysAgo} din pehle`}: "${q.questionText}"`;
+        })
+        .join('\n');
+      chatBody = { ...body, pastContext };
     }
-    const result = await this.geminiService.chat(body, userId);
+    const result = await this.geminiService.chat(chatBody, userId);
     if (userId) {
       await this.usersService.incrementQuestionsUsed(userId).catch(() => {});
     }

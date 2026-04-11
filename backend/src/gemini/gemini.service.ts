@@ -103,7 +103,18 @@ export class GeminiService {
   }
 
   async chat(body: any, userId?: string): Promise<any> {
-    const { systemInstruction, history = [], message, userQuestion, natalFingerprint } = body;
+    const { systemInstruction, history = [], message, userQuestion, natalFingerprint, pastContext } =
+      body;
+    const past =
+      typeof pastContext === 'string' && pastContext.trim().length > 0
+        ? pastContext.trim()
+        : '';
+    const baseSi = systemInstruction;
+    const effectiveSi =
+      baseSi && past
+        ? `${baseSi}\n\n# USER'S RECENT QUESTIONS (last 5):\n${past}\n\nUse this for continuity. Reference naturally.`
+        : baseSi;
+
     const contents = [
       ...history.map((h: any) => ({ role: h.role, parts: [{ text: h.text }] })),
       { role: 'user', parts: [{ text: message }] },
@@ -113,11 +124,12 @@ export class GeminiService {
     /** True only when reusing an existing Gemini cachedContent handle (not first create). */
     let contextCacheHit = false;
 
-    if (systemInstruction) {
+    // Per-turn pastContext would bust Gemini cachedContents; use inline systemInstruction only.
+    if (baseSi && !past) {
       const natalFp =
         typeof natalFingerprint === 'string' ? natalFingerprint : undefined;
       const instructionKey = this.contextInstructionCacheKey(
-        systemInstruction,
+        baseSi,
         userId,
         natalFp,
       );
@@ -138,7 +150,7 @@ export class GeminiService {
               signal: controller.signal,
               body: JSON.stringify({
                 model: 'models/gemini-3.1-pro-preview',
-                systemInstruction: { parts: [{ text: systemInstruction }] },
+                systemInstruction: { parts: [{ text: baseSi }] },
                 ttl: '3600s',
                 contents: [],
               }),
@@ -165,8 +177,8 @@ export class GeminiService {
     const payload: Record<string, unknown> = { contents };
     if (cachedContentName) {
       payload.cachedContent = cachedContentName;
-    } else if (systemInstruction) {
-      payload.systemInstruction = { parts: [{ text: systemInstruction }] };
+    } else if (effectiveSi) {
+      payload.systemInstruction = { parts: [{ text: effectiveSi }] };
     }
 
     const genController = new AbortController();
