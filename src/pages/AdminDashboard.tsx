@@ -19,6 +19,8 @@ const REPORT_TYPE_BADGE: Record<string, { bg: string; color: string }> = {
 };
 
 export default function AdminDashboard() {
+  const USD_TO_INR = 92.47;
+
   const [tab, setTab] = useState<'users' | 'questions' | 'cost' | 'reports'>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
@@ -162,7 +164,9 @@ export default function AdminDashboard() {
           {[
             { label: 'Total Questions', val: stats.totalQuestions ?? 0 },
             { label: 'Total Cost', val: `$${(stats.totalCost ?? 0).toFixed(4)}` },
+            { label: 'Total Cost (INR)', val: `₹${((stats.totalCost ?? 0) * USD_TO_INR).toFixed(2)}` },
             { label: 'Avg Cost/Q', val: `$${(stats.avgCostPerQuestion ?? 0).toFixed(5)}` },
+            { label: 'Avg Cost/Q (INR)', val: `₹${((stats.avgCostPerQuestion ?? 0) * USD_TO_INR).toFixed(4)}` },
             { label: 'Cache Hits', val: stats.cacheHits ?? 0 },
             { label: 'Cache Size', val: stats.cache?.size ?? 0 },
           ].map(s => (
@@ -278,11 +282,23 @@ export default function AdminDashboard() {
       {tab === 'cost' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 10, padding: 16 }}>
-            <h3 style={{ color: '#c9a84c', fontSize: 14, marginBottom: 12 }}>Gemini 3.1 Pro Preview Pricing</h3>
-            <div style={{ fontSize: 12, color: '#aaa', lineHeight: 2 }}>
-              <div>Input tokens: $2.00 per 1M tokens</div>
-              <div>Output tokens: $12.00 per 1M tokens</div>
-              <div>Avg per question: ~$0.012 (500 in + 400 out tokens)</div>
+            <h3 style={{ color: '#c9a84c', fontSize: 14, marginBottom: 12 }}>
+              Actual Spend (from DB — exact)
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {[
+                { label: 'Total USD', val: `$${(stats?.totalCost ?? 0).toFixed(6)}` },
+                { label: 'Total INR', val: `₹${((stats?.totalCost ?? 0) * USD_TO_INR).toFixed(2)}` },
+                { label: 'Avg per Question USD', val: `$${(stats?.avgCostPerQuestion ?? 0).toFixed(6)}` },
+                { label: 'Avg per Question INR', val: `₹${((stats?.avgCostPerQuestion ?? 0) * USD_TO_INR).toFixed(4)}` },
+                { label: 'Cache Hit Questions', val: stats?.cacheHits ?? 0 },
+                { label: 'Total Questions', val: stats?.totalQuestions ?? 0 },
+              ].map(row => (
+                <div key={row.label} style={{ background: '#141428', border: '1px solid #2a2a4a', borderRadius: 8, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>{row.label}</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: '#c9a84c' }}>{row.val}</div>
+                </div>
+              ))}
             </div>
           </div>
           <div style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 10, padding: 16 }}>
