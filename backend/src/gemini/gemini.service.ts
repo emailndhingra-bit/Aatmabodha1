@@ -55,6 +55,14 @@ export class GeminiService {
     costUsd: number;
   } | null {
     const usage = data?.usageMetadata;
+    console.log(
+      '[Cost Debug]',
+      JSON.stringify({
+        promptTokenCount: usage?.promptTokenCount,
+        candidatesTokenCount: usage?.candidatesTokenCount,
+        cachedContentTokenCount: usage?.cachedContentTokenCount,
+      }),
+    );
     if (!usage || typeof usage.promptTokenCount !== 'number') return null;
     const inputTokens = usage.promptTokenCount;
     const outputTokens =
