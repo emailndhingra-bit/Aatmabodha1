@@ -21,28 +21,30 @@ export class GeminiService {
 
   constructor(private questionsService: QuestionsService) {}
 
-  /** Strip volatile lines so Gemini context-cache keys stay stable across days. */
-  private normalizeSystemInstructionForCache(systemInstruction: string): string {
-    return systemInstruction.replace(
-      /\bCURRENT_DATE:\s*\d{4}-\d{2}-\d{2}\b/gi,
-      'CURRENT_DATE:__STABLE__',
-    );
-  }
-
   /**
-   * Cache key for cachedContents must not depend on today's date or transit text.
-   * Uses: userId (when present), optional natalFingerprint from client (natal DB slice),
-   * and full normalized system instruction (date placeholder only).
+   * Context-cache key must stay stable across requests (no dates / transit blobs in the key).
+   * If systemInstruction ever embeds dynamic blocks, hash only the prefix before those markers,
+   * strip ISO dates (YYYY-MM-DD), then first 200 chars — plus userId / natalFingerprint so entries
+   * do not collide across users or charts.
    */
   private contextInstructionCacheKey(
     systemInstruction: string,
     userId?: string,
     natalFingerprint?: string,
   ): string {
-    const normalized = this.normalizeSystemInstructionForCache(systemInstruction);
-    const fp = (natalFingerprint ?? '').trim();
-    const material = `${userId ?? 'anon'}\x1e${fp}\x1e${normalized}`;
-    return createHash('sha256').update(material).digest('hex');
+    const dynamicMarkers = ['Today:', 'TRANSITS:', 'Current Date:', 'CURRENT_DATE:'];
+    let cut = -1;
+    for (const marker of dynamicMarkers) {
+      const idx = systemInstruction.indexOf(marker);
+      if (idx !== -1 && (cut === -1 || idx < cut)) cut = idx;
+    }
+    let stableContent =
+      cut > 0 ? systemInstruction.substring(0, cut) : systemInstruction;
+    stableContent = stableContent.replace(/\b\d{4}-\d{2}-\d{2}\b/g, '__DATE__');
+    const prefix = `${userId ?? 'anon'}\x1e${(natalFingerprint ?? '').trim()}\x1e`;
+    return createHash('sha256')
+      .update(prefix + stableContent.substring(0, 200))
+      .digest('hex');
   }
 
   async generateContent(body: any, userId?: string): Promise<any> {
