@@ -110,22 +110,22 @@ export class GeminiService {
         ? pastContext.trim()
         : '';
     const baseSi = systemInstruction;
-    const effectiveSi =
-      baseSi && past
-        ? `${baseSi}\n\n# USER'S RECENT QUESTIONS (last 5):\n${past}\n\nUse this for continuity. Reference naturally.`
-        : baseSi;
+    const effectiveSi = baseSi;
+
+    const userTurnText = past
+      ? `${message}\n\n[PAST CONTEXT - user's recent questions for continuity:\n${past}\nReference naturally, never say "as per last conversation".]`
+      : message;
 
     const contents = [
       ...history.map((h: any) => ({ role: h.role, parts: [{ text: h.text }] })),
-      { role: 'user', parts: [{ text: message }] },
+      { role: 'user', parts: [{ text: userTurnText }] },
     ];
 
     let cachedContentName: string | null = null;
     /** True only when reusing an existing Gemini cachedContent handle (not first create). */
     let contextCacheHit = false;
 
-    // Per-turn pastContext would bust Gemini cachedContents; use inline systemInstruction only.
-    if (baseSi && !past) {
+    if (baseSi) {
       const natalFp =
         typeof natalFingerprint === 'string' ? natalFingerprint : undefined;
       const instructionKey = this.contextInstructionCacheKey(
