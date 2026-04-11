@@ -78,11 +78,13 @@ const callGemini = async (
 // ─────────────────────────────────────────────────────────────
 // Chat helper — sends full conversation history to Flask /api/gemini-chat
 // ─────────────────────────────────────────────────────────────
+type GeminiChatResult = { text: string; error?: string };
+
 const callGeminiChat = async (
     systemInstruction: string,
     history: { role: "user" | "model"; text: string }[],
     newMessage: string
-): Promise<string> => {
+): Promise<GeminiChatResult> => {
     const res = await fetch(`${BACKEND_URL}/api/gemini-chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -98,7 +100,10 @@ const callGeminiChat = async (
         throw new Error(err.error || `Backend chat error: ${res.status}`);
     }
     const data = await res.json();
-    return data.text || "";
+    if (data?.error) {
+        return { text: "", error: String(data.error) };
+    }
+    return { text: data.text || "" };
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -405,19 +410,21 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
                 ? `CHART CONTEXT:\n${this._context}\n\nUSER: ${userMessage}`
                 : userMessage;
 
-            const responseText = await callGeminiChat(
+            const out = await callGeminiChat(
                 this._systemInstruction,
                 this._history,
                 fullPrompt
             );
+            const responseText = out.error ? out.error : out.text;
 
             // Append to local history
             this._history.push({ role: 'user', text: fullPrompt });
             this._history.push({ role: 'model', text: responseText });
 
-            // Return same shape as original SDK response
+            // Return same shape as original SDK response (optional `error` for UI)
             return {
                 text: responseText,
+                ...(out.error ? { error: out.error } : {}),
                 candidates: [{ content: { parts: [{ text: responseText }] } }],
             };
         },

@@ -818,8 +818,10 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
 
     try {
       const result = await sendWithRetry();
-      let responseText = result.text || "";
-      
+      let responseText = result.error
+        ? String(result.error)
+        : (result.text || "");
+
       responseText = responseText.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
       
       const visualizeMatch = responseText.match(/<<VISUALIZE:\s*(.*?)>>/);
