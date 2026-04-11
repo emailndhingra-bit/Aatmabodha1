@@ -420,9 +420,7 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
         _context: context,
 
         sendMessage: async function (userMessage: string, userQuestion?: string) {
-            const fullPrompt = this._history.length === 0
-                ? `CHART CONTEXT:\n${this._context}\n\nUSER: ${userMessage}`
-                : userMessage;
+            const fullPrompt = userMessage;
 
             const out = await callGeminiChat(
                 this._systemInstruction,
