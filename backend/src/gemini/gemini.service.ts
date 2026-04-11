@@ -101,7 +101,20 @@ export class GeminiService {
         },
       );
       const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const msgForLimit = String(prompt || '').toLowerCase();
+      const isLongForm =
+        msgForLimit.includes('table') ||
+        msgForLimit.includes('each year') ||
+        msgForLimit.includes('year by year') ||
+        msgForLimit.includes('window') ||
+        msgForLimit.includes('list all');
+      const charLimit = isLongForm ? 2000 : 3200;
+      if (text && text.length > charLimit) {
+        const cutPoint = text.lastIndexOf('.', charLimit);
+        text =
+          cutPoint > 0 ? text.substring(0, cutPoint + 1) : text.substring(0, charLimit);
+      }
 
       const fromUsage = this.costFromUsageMetadata(data);
       let inputTokens: number;
@@ -237,7 +250,20 @@ export class GeminiService {
         },
       );
       const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const msgForLimit = String(message || '').toLowerCase();
+      const isLongForm =
+        msgForLimit.includes('table') ||
+        msgForLimit.includes('each year') ||
+        msgForLimit.includes('year by year') ||
+        msgForLimit.includes('window') ||
+        msgForLimit.includes('list all');
+      const charLimit = isLongForm ? 2000 : 3200;
+      if (text && text.length > charLimit) {
+        const cutPoint = text.lastIndexOf('.', charLimit);
+        text =
+          cutPoint > 0 ? text.substring(0, cutPoint + 1) : text.substring(0, charLimit);
+      }
 
       const fromUsage = this.costFromUsageMetadata(data);
       let inputTokens: number;
