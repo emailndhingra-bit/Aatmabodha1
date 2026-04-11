@@ -163,7 +163,7 @@ export class GeminiService {
             userId,
             question: message,
             response: text,
-            language: body.language,
+            language: body.language || 'EN',
             cacheHit: false,
           })
           .catch(() => {});
