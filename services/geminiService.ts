@@ -441,7 +441,14 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
         _natalFingerprint: natalFingerprint,
 
         sendMessage: async function (userMessage: string, userQuestion?: string) {
-            const fullPrompt = userMessage;
+            const userCtx = localStorage.getItem('userContext');
+            const ctx = userCtx ? JSON.parse(userCtx) : {};
+
+            const contextPrefix = ctx.presentCity || ctx.preferredLanguage
+                ? `[USER_CONTEXT: Language=${ctx.preferredLanguage || 'Hinglish'}, Location=${ctx.presentCity || 'India'}]\n\n`
+                : '';
+
+            const fullPrompt = contextPrefix + userMessage;
 
             const out = await callGeminiChat(
                 this._systemInstruction,

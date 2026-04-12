@@ -267,6 +267,45 @@ const INDIAN_LANGUAGES = [
   { code: 'Urdu', label: 'اردو', desc: 'تقدیر اور ستارے' }
 ];
 
+const USER_CONTEXT_KEY = 'userContext';
+
+type OracleUserContext = {
+  preferredLanguage: string;
+  presentCity: string;
+  setupDone: boolean;
+};
+
+const SETUP_LANGUAGE_OPTIONS = [
+  'Hinglish',
+  'Hindi',
+  'English',
+  'Marathi',
+  'Bengali',
+  'Tamil',
+  'Telugu',
+  'Gujarati',
+  'Punjabi',
+] as const;
+
+function readOracleUserContext(): OracleUserContext | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(USER_CONTEXT_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as Partial<OracleUserContext>;
+    if (p && p.setupDone === true && typeof p.preferredLanguage === 'string') {
+      return {
+        preferredLanguage: p.preferredLanguage,
+        presentCity: typeof p.presentCity === 'string' ? p.presentCity : '',
+        setupDone: true,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 const GLOBAL_LANGUAGES = [
   { code: 'English', label: 'English', desc: 'Professional & Direct' },
   { code: 'Spanish', label: 'Español', desc: 'Pasión y Destino' },
@@ -283,6 +322,10 @@ const GLOBAL_LANGUAGES = [
 ];
 
 const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageSelect, userPhoto, userAge, userGotra, userMood, userName, userGender, triggerPrompt, onPromptHandled, cultureMode = 'EN' }) => {
+  const [setupWizardComplete, setSetupWizardComplete] = useState(() => readOracleUserContext() != null);
+  const [setupPreferredLang, setSetupPreferredLang] = useState<string>(() => readOracleUserContext()?.preferredLanguage || 'Hinglish');
+  const [setupPresentCity, setSetupPresentCity] = useState(() => readOracleUserContext()?.presentCity || '');
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -335,8 +378,13 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // --- INITIAL GREETING LOGIC ---
+  // --- INITIAL GREETING LOGIC (after one-time user context setup) ---
   useEffect(() => {
+    if (!setupWizardComplete) {
+      setMessages([]);
+      return;
+    }
+
     let initialText = "**Om Tat Sat.** I am Aatmabodha.\n\nI see your chart clearly. I do not guess; I calculate. The planets have woven a specific pattern for you, and I am here to untangle it.\n\nAsk me boldly. Whether it is your **Past Life**, your **Karmic Debts**, or your **Golden Period**—I will reveal the deterministic truth.\n\n*What do the stars compel you to ask today?*";
     if (cultureMode === 'JP') {
         initialText = "**こんばんは。** 私はアートマボーダ（Aatmabodha）です。\n\nあなたの星（ホロスコープ）がはっきりと見えます。私は推測しません、計算します。惑星はあなたのために特別なパターンを織り成しており、私はそれを解き明かすためにここにいます。\n\n**過去世**、**カルマ（業）**、または**人生の黄金期**について、何でも聞いてください。決定論的な真実をお伝えします。\n\n*今日、星々はあなたに何を問いかけるよう促していますか？*";
@@ -358,7 +406,7 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
       console.warn('Could not restore chat history', e);
     }
     setMessages([{ role: 'model', text: initialText }]);
-  }, [cultureMode]);
+  }, [cultureMode, setupWizardComplete]);
 
   // Persist messages to localStorage whenever they change (cap at 50)
   useEffect(() => {
@@ -631,9 +679,40 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
     setSuggestedFollowUps([]);
   };
 
+  const handleOracleSetupComplete = () => {
+    const payload: OracleUserContext = {
+      preferredLanguage: setupPreferredLang,
+      presentCity: setupPresentCity.trim(),
+      setupDone: true,
+    };
+    try {
+      localStorage.setItem(USER_CONTEXT_KEY, JSON.stringify(payload));
+    } catch (e) {
+      console.warn('Could not persist user context', e);
+    }
+    setSetupWizardComplete(true);
+    onLanguageSelect(setupPreferredLang);
+  };
+
+  const handleResetOracleUserContext = () => {
+    try {
+      localStorage.removeItem(USER_CONTEXT_KEY);
+      localStorage.removeItem('vedicChatHistory');
+    } catch (e) {
+      console.warn('Could not reset user context', e);
+    }
+    setSetupPreferredLang('Hinglish');
+    setSetupPresentCity('');
+    setSetupWizardComplete(false);
+    setSessionTokens(0);
+    setTurnCount(0);
+    setLastInjectedTopic('');
+    setSuggestedFollowUps([]);
+  };
+
   const handleSend = async (manualMsg?: string, displayMsg?: string) => {
     const textToSend = manualMsg || input.trim();
-    if ((!textToSend && attachments.length === 0) || !chatSession || loading) return;
+    if ((!textToSend && attachments.length === 0) || !chatSession || loading || !setupWizardComplete) return;
 
     // Capture visualization intent before resetting state
     const shouldTriggerImage = isVisualizeActive || (manualMsg && /visualize|show me/i.test(manualMsg));
@@ -659,6 +738,21 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
     }
     if (userGender && userGender !== 'Prefer not to say') {
         steeringInstructions += ` The user's gender is ${userGender}. Use appropriate pronouns and context if needed.`;
+    }
+
+    try {
+      const rawCtx = localStorage.getItem(USER_CONTEXT_KEY);
+      if (rawCtx) {
+        const uc = JSON.parse(rawCtx) as OracleUserContext;
+        if (uc?.setupDone && uc.preferredLanguage) {
+          steeringInstructions += ` USER_PREFERRED_LANGUAGE: ${uc.preferredLanguage}. Match tone and vocabulary to this choice.`;
+          if (uc.presentCity?.trim()) {
+            steeringInstructions += ` USER_LOCATION (present city): ${uc.presentCity.trim()}.`;
+          }
+        }
+      }
+    } catch {
+      /* ignore */
     }
 
     // --- FILE PROCESSING LOGIC ---
@@ -907,11 +1001,11 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
 
   // Trigger prompt listener
   useEffect(() => {
-      if (triggerPrompt && !loading) {
+      if (triggerPrompt && !loading && setupWizardComplete) {
           handleSend(triggerPrompt);
           if (onPromptHandled) onPromptHandled();
       }
-  }, [triggerPrompt]);
+  }, [triggerPrompt, setupWizardComplete]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1113,26 +1207,35 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
       </div>
 
       {/* Header */}
-      <div className="relative z-20 bg-[#120f26] border-b border-amber-900/20 p-4 flex items-center justify-between shadow-lg">
-        <div className="flex items-center gap-3">
-            <div className="relative">
+      <div className="relative z-20 bg-[#120f26] border-b border-amber-900/20 p-4 flex items-center justify-between shadow-lg gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+            <div className="relative shrink-0">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-900 to-slate-900 border border-amber-500/30 flex items-center justify-center shadow-[0_0_15px_rgba(245,158,11,0.2)]">
                     <Bot className="w-6 h-6 text-amber-400" />
                 </div>
                 <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 border-2 border-[#120f26] rounded-full animate-pulse"></div>
             </div>
-            <div>
-                <h2 className="text-amber-50 font-serif font-bold text-base flex items-center gap-2">
+            <div className="min-w-0">
+                <h2 className="text-amber-50 font-serif font-bold text-base flex items-center gap-2 flex-wrap">
                     {cultureMode === 'JP' ? "アートマボーダ" : cultureMode === 'HI' ? "आत्मबोध" : "Aatmabodha"}
                     <span className="text-[9px] bg-amber-900/40 text-amber-200 px-1.5 py-0.5 rounded border border-amber-500/30 tracking-widest uppercase font-sans">
                         {cultureMode === 'JP' ? "神託モード" : cultureMode === 'HI' ? "ओरेकल मोड" : "Oracle Mode"}
                     </span>
                 </h2>
-                <p className="text-indigo-300/60 text-xs font-medium font-sans">
+                <p className="text-indigo-300/60 text-xs font-medium font-sans truncate">
                     {language || (cultureMode === 'JP' ? "Japanese" : cultureMode === 'HI' ? "Hindi" : "Hinglish")} • Powered by Gemini 3.0 Pro
                 </p>
             </div>
         </div>
+        {setupWizardComplete && (
+          <button
+            type="button"
+            onClick={handleResetOracleUserContext}
+            className="shrink-0 text-[11px] text-amber-400/90 hover:text-amber-200 underline underline-offset-2 font-medium"
+          >
+            Change
+          </button>
+        )}
       </div>
 
       {/* Settings Bar */}
@@ -1171,9 +1274,66 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
 
       {/* Messages Area */}
       <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar bg-[#0B0c15]">
+
+        {!setupWizardComplete && chatSession && (
+          <div className="max-w-lg mx-auto mt-4 mb-8 rounded-2xl border border-amber-500/25 bg-[#120f26]/95 backdrop-blur-sm p-6 shadow-[0_0_40px_rgba(245,158,11,0.08)] animate-in fade-in zoom-in-95 duration-500">
+            <h3 className="text-lg font-serif font-bold text-amber-50 text-center mb-2">
+              Aatmabodha ko thoda aur batayein
+            </h3>
+            <p className="text-sm text-indigo-200/80 text-center mb-6 whitespace-pre-line leading-relaxed">
+              Taaki woh aapki bhasha aur{'\n'}sanskriti mein baat kar sake
+            </p>
+
+            <div className="space-y-5">
+              <div>
+                <label className="block text-xs font-bold text-amber-400/90 uppercase tracking-wider mb-2">
+                  Aap kaunsi bhasha mein baat karna chahte hain?
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {SETUP_LANGUAGE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setSetupPreferredLang(opt)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                        setupPreferredLang === opt
+                          ? 'bg-amber-600/90 text-white border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.35)]'
+                          : 'bg-[#1a1638] text-indigo-200 border-indigo-500/35 hover:border-amber-500/40'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-amber-400/90 uppercase tracking-wider mb-2">
+                  Aap abhi kahan hain?
+                </label>
+                <input
+                  type="text"
+                  value={setupPresentCity}
+                  onChange={(e) => setSetupPresentCity(e.target.value)}
+                  placeholder="City likhein — Mumbai, Dubai, London..."
+                  className="w-full rounded-xl border border-indigo-500/35 bg-[#0f0c29] px-3 py-2.5 text-sm text-indigo-100 placeholder:text-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-amber-500/40"
+                />
+                <p className="text-[10px] text-indigo-400/60 mt-1.5">Optional — can skip</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleOracleSetupComplete}
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-sm font-bold shadow-lg shadow-amber-900/25 transition-all"
+              >
+                Shuru Karein →
+              </button>
+            </div>
+          </div>
+        )}
         
         {/* Empty State */}
-        {messages.length === 1 && (
+        {setupWizardComplete && messages.length === 1 && (
             <div className="max-w-3xl mx-auto mt-6 mb-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <div className="text-center mb-6">
                     <h3 className="text-amber-200/80 font-serif uppercase tracking-[0.3em] text-xs mb-2">
@@ -1202,7 +1362,7 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
             </div>
         )}
 
-        {messages.map((msg, idx) => (
+        {setupWizardComplete && messages.map((msg, idx) => (
             <div key={idx} className={`flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'model' && (
                 <div className="w-8 h-8 rounded-full bg-[#1a1638] border border-amber-500/20 flex items-center justify-center shrink-0 mt-1 shadow-lg">
@@ -1279,7 +1439,7 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
         ))}
 
         {/* LOGICAL EXTENSION TILES (FOLLOW-UPS) */}
-        {!loading && suggestedFollowUps.length > 0 && messages[messages.length - 1].role === 'model' && (
+        {setupWizardComplete && !loading && suggestedFollowUps.length > 0 && messages.length > 0 && messages[messages.length - 1].role === 'model' && (
             <div className="flex flex-col items-center gap-3 mt-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
                 <div className="flex items-center gap-2 text-[10px] text-amber-500/70 uppercase tracking-widest font-bold">
                     <Lightbulb className="w-3 h-3" /> 
@@ -1293,7 +1453,7 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
             </div>
         )}
 
-        {loading && (
+        {setupWizardComplete && loading && (
           <div className="flex gap-3 justify-start animate-in fade-in duration-500">
              <div className="w-8 h-8 rounded-full bg-[#1a1638] border border-indigo-900 flex items-center justify-center shrink-0">
                 <BrainCircuit className="w-4 h-4 text-cyan-400 animate-pulse" />
@@ -1305,7 +1465,7 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
           </div>
         )}
         
-        {visualizing && (
+        {setupWizardComplete && visualizing && (
           <div className="flex gap-3 justify-start animate-in fade-in duration-500">
              <div className="w-8 h-8 rounded-full bg-[#1a1638] border border-indigo-900 flex items-center justify-center shrink-0">
                 <Eye className="w-4 h-4 text-purple-400 animate-pulse" />
@@ -1357,7 +1517,8 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={getPlaceholder()}
-                className={`w-full bg-transparent text-sm p-1.5 max-h-32 min-h-[24px] focus:outline-none custom-scrollbar resize-none font-medium pr-20 ${isGodMode ? 'text-amber-100 placeholder:text-amber-500/50' : 'text-indigo-100 placeholder:text-indigo-700/50'}`}
+                disabled={!setupWizardComplete}
+                className={`w-full bg-transparent text-sm p-1.5 max-h-32 min-h-[24px] focus:outline-none custom-scrollbar resize-none font-medium pr-20 disabled:opacity-40 disabled:cursor-not-allowed ${isGodMode ? 'text-amber-100 placeholder:text-amber-500/50' : 'text-indigo-100 placeholder:text-indigo-700/50'}`}
                 rows={1}
             />
             
@@ -1366,7 +1527,8 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
                 {/* SPEECH TO TEXT BUTTON */}
                 <button
                     onClick={toggleListening}
-                    className={`p-1.5 rounded-lg transition-all shadow-lg shrink-0 ${isListening ? 'bg-rose-600 text-white animate-pulse' : 'text-indigo-400 hover:text-amber-200 hover:bg-white/5'}`}
+                    disabled={!setupWizardComplete}
+                    className={`p-1.5 rounded-lg transition-all shadow-lg shrink-0 disabled:opacity-40 disabled:cursor-not-allowed ${isListening ? 'bg-rose-600 text-white animate-pulse' : 'text-indigo-400 hover:text-amber-200 hover:bg-white/5'}`}
                     title="Speak (Supports Multi-Language)"
                 >
                     {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
@@ -1374,7 +1536,7 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
 
                 <button
                     onClick={() => handleSend()}
-                    disabled={(loading || (!input.trim() && attachments.length === 0))}
+                    disabled={!setupWizardComplete || loading || (!input.trim() && attachments.length === 0)}
                     className={`p-1.5 rounded-lg transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ${isGodMode ? 'bg-gradient-to-r from-amber-600 to-yellow-600 text-white shadow-amber-600/30 hover:shadow-amber-500/50' : 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white shadow-amber-600/20'}`}
                 >
                     {isGodMode ? <Crown className="w-4 h-4" /> : <Send className="w-4 h-4" />}
