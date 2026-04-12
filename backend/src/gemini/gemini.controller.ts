@@ -15,6 +15,7 @@ import { ReportsService } from '../reports/reports.service';
 import { UsersService } from '../users/users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OptionalJwtGuard } from '../auth/guards/optional-jwt.guard';
+import { AdminGuard } from '../guards/admin.guard';
 
 @Controller('')
 export class GeminiController {
@@ -24,12 +25,6 @@ export class GeminiController {
     private readonly reportsService: ReportsService,
     private readonly usersService: UsersService,
   ) {}
-
-  private assertAdminEmail(req: any): void {
-    if (req.user?.email !== process.env.ADMIN_EMAIL) {
-      throw new UnauthorizedException('Admin only');
-    }
-  }
 
   @Post('gemini')
   @UseGuards(OptionalJwtGuard)
@@ -86,7 +81,7 @@ export class GeminiController {
   }
 
   @Get('admin/stats')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   async getStats() {
     const stats = await this.questionsService.getStats();
     const cache = this.geminiService.getCacheStats();
@@ -94,9 +89,8 @@ export class GeminiController {
   }
 
   @Get('admin/reports/stats')
-  @UseGuards(JwtAuthGuard)
-  async getAdminReportStats(@Req() req: any) {
-    this.assertAdminEmail(req);
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async getAdminReportStats() {
     const raw = await this.reportsService.getReportStats();
     const countByType: Record<string, number> = {};
     for (const row of raw.countByType) {
@@ -112,14 +106,12 @@ export class GeminiController {
   }
 
   @Get('admin/reports')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AdminGuard)
   async getAdminReports(
-    @Req() req: any,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('type') type?: string,
   ) {
-    this.assertAdminEmail(req);
     const p = Math.max(1, parseInt(page || '1', 10) || 1);
     const l = Math.min(100, Math.max(1, parseInt(limit || '50', 10) || 50));
     const result = await this.reportsService.getAdminReports(p, l, type || undefined);

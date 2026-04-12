@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { QuestionLog } from './question.entity';
+import { QuestionLog } from './question-log.entity';
 import * as crypto from 'crypto';
 
 @Injectable()

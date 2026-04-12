@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Upload, Download, Loader2, Sparkles, Moon, Table as TableIcon, LayoutGrid, Star, Database, Eye, MessageSquare, BarChart3, Diamond, RefreshCw, Scroll, Camera, UserCircle, Compass, Clock, CheckCircle, AlertTriangle, Play, Hand, Calendar, Book, History, X, Globe, Languages, Mic, ArrowRight, HelpCircle, Crown, Shield } from 'lucide-react';
 import { processAstrologyJson, identifyMissingData, enrichData, calculateAccurateTransits, getSignNum, getSignName, PLANET_LORDS } from './services/jsonMapper';
 import { initDatabase } from './services/db';
@@ -26,7 +26,7 @@ import TraditionalSummary from './components/TraditionalSummary';
 import Login from './src/pages/Login';
 import AuthCallback from './src/pages/AuthCallback';
 import PendingApproval from './src/pages/PendingApproval';
-import AdminDashboard from './src/pages/AdminDashboard';
+import AdminRoute from './src/pages/AdminRoute';
 
 type CultureMode = 'EN' | 'JP' | 'HI';
 
@@ -48,12 +48,18 @@ function convertToISTForAPI(dob: string, tob: string, timezoneOffset: number) {
   return { date_of_birth: istDob, time_of_birth: istTob };
 }
 
+const APP_BACKEND_BASE =
+  (typeof import.meta !== 'undefined' &&
+    (import.meta as ImportMeta & { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL) ||
+  'https://aatmabodha1-backend.onrender.com';
+const ADMIN_PANEL_EMAIL = 'emailndhingra@gmail.com';
+
 const App: React.FC = () => {
   const path = window.location.pathname;
   if (path === '/login') return <Login />;
   if (path === '/auth/callback') return <AuthCallback />;
   if (path === '/auth/pending') return <PendingApproval />;
-  if (path === '/admin') return <AdminDashboard />;
+  if (path === '/admin') return <AdminRoute />;
   
   const token = localStorage.getItem('auth_token');
   if (!token) {
@@ -109,6 +115,8 @@ const App: React.FC = () => {
   
   // Navigation State
   const [viewMode, setViewMode] = useState<'dashboard' | 'chat' | 'faq' | 'daily'>('chat');
+  /** Bumped after /api/auth/me so admin nav re-reads `auth_user` from localStorage. */
+  const [authUserTick, setAuthUserTick] = useState(0);
   const [chatSession, setChatSession] = useState<any>(null);
   const [language, setLanguage] = useState<string | null>(null);
   
@@ -1046,6 +1054,22 @@ const App: React.FC = () => {
     };
 
     (async () => {
+      const authTok = localStorage.getItem('auth_token');
+      if (authTok) {
+        try {
+          const r = await fetch(`${APP_BACKEND_BASE}/api/auth/me`, {
+            headers: { Authorization: `Bearer ${authTok}` },
+          });
+          if (r.ok) {
+            const u = await r.json();
+            localStorage.setItem('auth_user', JSON.stringify(u));
+            if (!cancelled) setAuthUserTick((t) => t + 1);
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      if (cancelled) return;
       loadCachedUserPrefs();
       if (cancelled) return;
       const dbFromProfile = await bootstrapFromServerProfile();
@@ -1078,6 +1102,15 @@ const App: React.FC = () => {
 
   const chalit = data?.chalit || [];
 
+  const currentUser = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('auth_user') || 'null') as { email?: string } | null;
+    } catch {
+      return null;
+    }
+  }, [authUserTick]);
+  const isAdmin = currentUser?.email === ADMIN_PANEL_EMAIL;
+
   return (
     <div className="min-h-screen bg-[#0B0c15] text-amber-50 font-serif selection:bg-amber-900/50 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]">
       
@@ -1100,6 +1133,17 @@ const App: React.FC = () => {
                  <button onClick={() => setCultureMode('EN')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${cultureMode === 'EN' ? 'bg-indigo-600 text-white shadow' : 'text-indigo-400 hover:text-white'}`}>EN</button>
                  <button onClick={() => setCultureMode('HI')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${cultureMode === 'HI' ? 'bg-orange-600 text-white shadow' : 'text-orange-400 hover:text-white'}`}>HI</button>
              </div>
+
+             {isAdmin && (
+               <a
+                 href="/admin"
+                 className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider text-amber-200 bg-amber-950/40 border border-amber-600/40 hover:border-amber-400/60 hover:bg-amber-900/30 transition-all"
+                 title="Admin dashboard"
+               >
+                 <Crown className="w-4 h-4 text-amber-400" />
+                 <span className="hidden sm:inline">Admin</span>
+               </a>
+             )}
 
              {data && (
                <div className="flex gap-2 shrink-0">

@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AdminGuard } from '../guards/admin.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -53,38 +54,26 @@ export class AuthController {
   }
 
   @Get('admin/pending')
-  @UseGuards(JwtAuthGuard)
-  async getPendingUsers(@Req() req: any) {
-    if (!this.authService.isAdmin(req.user.email)) {
-      throw new UnauthorizedException('Admin only');
-    }
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async getPendingUsers() {
     return this.usersService.getAllPendingUsers();
   }
 
   @Get('admin/users')
-  @UseGuards(JwtAuthGuard)
-  async getAllUsers(@Req() req: any) {
-    if (!this.authService.isAdmin(req.user.email)) {
-      throw new UnauthorizedException('Admin only');
-    }
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async getAllUsers() {
     return this.usersService.getAllUsers();
   }
 
   @Post('admin/approve/:id')
-  @UseGuards(JwtAuthGuard)
-  async approveUser(@Req() req: any, @Param('id') id: string) {
-    if (!this.authService.isAdmin(req.user.email)) {
-      throw new UnauthorizedException('Admin only');
-    }
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async approveUser(@Param('id') id: string) {
     return this.usersService.approveUser(id);
   }
 
   @Post('admin/reject/:id')
-  @UseGuards(JwtAuthGuard)
-  async rejectUser(@Req() req: any, @Param('id') id: string) {
-    if (!this.authService.isAdmin(req.user.email)) {
-      throw new UnauthorizedException('Admin only');
-    }
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async rejectUser(@Param('id') id: string) {
     return this.usersService.rejectUser(id);
   }
 }

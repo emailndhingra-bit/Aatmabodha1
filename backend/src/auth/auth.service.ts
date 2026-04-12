@@ -20,12 +20,13 @@ export class AuthService {
       if (user) {
         user = await this.usersService.updateUser(user.id, { googleId: id });
       } else {
+        const adminEmail = process.env.ADMIN_EMAIL || 'emailndhingra@gmail.com';
         user = await this.usersService.createUser({
           googleId: id,
           email,
           name: displayName,
           picture: photos?.[0]?.value,
-          status: email === process.env.ADMIN_EMAIL ? UserStatus.APPROVED : UserStatus.PENDING,
+          status: email === adminEmail ? UserStatus.APPROVED : UserStatus.PENDING,
         });
       }
     }
@@ -44,10 +45,8 @@ export class AuthService {
     const existing = await this.usersService.findByEmail(email);
     if (existing) throw new BadRequestException('Email already registered');
     const hash = await bcrypt.hash(password, 10);
-    const status =
-      process.env.ADMIN_EMAIL && email === process.env.ADMIN_EMAIL
-        ? UserStatus.APPROVED
-        : UserStatus.PENDING;
+    const adminEmail = process.env.ADMIN_EMAIL || 'emailndhingra@gmail.com';
+    const status = email === adminEmail ? UserStatus.APPROVED : UserStatus.PENDING;
     const user = await this.usersService.createUser({
       email,
       password: hash,
@@ -63,6 +62,7 @@ export class AuthService {
   }
 
   isAdmin(email: string): boolean {
-    return !!process.env.ADMIN_EMAIL && email === process.env.ADMIN_EMAIL;
+    const adminEmail = process.env.ADMIN_EMAIL || 'emailndhingra@gmail.com';
+    return email === adminEmail;
   }
 }
