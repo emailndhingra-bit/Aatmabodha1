@@ -93,6 +93,18 @@ export class GeminiService {
     return suggBlock ? `${truncated}\n\n${suggBlock}` : truncated;
   }
 
+  /** Hard cap for chat replies (~400 words); preserves <<<SUGG>>> block. */
+  private capChatOutputAtMaxChars(text: string, maxChars: number): string {
+    if (!text || text.length <= maxChars) return text;
+    const suggMatch = text.match(/<<<SUGG[\s\S]*?>>>/);
+    const suggBlock = suggMatch ? suggMatch[0] : '';
+    const body = suggBlock ? text.replace(suggBlock, '').trim() : text;
+    const cut = body.lastIndexOf('.', maxChars);
+    const truncatedBody =
+      cut > 0 ? body.slice(0, cut + 1) : body.slice(0, maxChars);
+    return suggBlock ? `${truncatedBody}\n\n${suggBlock}` : truncatedBody;
+  }
+
   async generateContent(body: any, userId?: string): Promise<any> {
     const { prompt, responseFormat, imageParts = [] } = body;
     const inflightKey = `${(prompt || '').substring(0, 100)}${responseFormat ?? ''}`;
@@ -192,13 +204,13 @@ export class GeminiService {
       ? `${message}\n\n[PAST CONTEXT - user's recent questions for continuity:\n${past}\nReference naturally, never say "as per last conversation".]`
       : message;
 
-    const cappedHistory = history.slice(-4);
-    // Keep only last 2 exchanges (4 messages)
+    // Last 4 turns; each message capped so long model replies don't blow token budget
+    const cappedHistory = history.slice(-4).map((h: any) => ({
+      role: h.role,
+      parts: [{ text: String(h.text ?? '').slice(0, 500) }],
+    }));
 
-    const contents = [
-      ...cappedHistory.map((h: any) => ({ role: h.role, parts: [{ text: h.text }] })),
-      { role: 'user', parts: [{ text: userTurnText }] },
-    ];
+    const contents = [...cappedHistory, { role: 'user', parts: [{ text: userTurnText }] }];
 
     let cachedContentName: string | null = null;
     /** True only when reusing an existing Gemini cachedContent handle (not first create). */
@@ -275,6 +287,10 @@ export class GeminiService {
       const data = await res.json();
       let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
       text = this.truncatePreservingSugg(text, String(message || ''));
+      const MAX_OUTPUT = 2400; // ~400 words
+      if (text && text.length > MAX_OUTPUT) {
+        text = this.capChatOutputAtMaxChars(text, MAX_OUTPUT);
+      }
 
       const fromUsage = this.costFromUsageMetadata(data);
       let inputTokens: number;
