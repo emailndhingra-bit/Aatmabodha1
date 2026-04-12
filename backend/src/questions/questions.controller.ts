@@ -6,6 +6,13 @@ import { QuestionsService } from './questions.service';
 export class QuestionsController {
   constructor(private readonly questionsService: QuestionsService) {}
 
+  @Get('admin/list')
+  @UseGuards(JwtAuthGuard)
+  async adminList() {
+    await this.questionsService.categorizeAllExisting();
+    return this.questionsService.getAdminQuestions(100);
+  }
+
   @Get('recent')
   @UseGuards(JwtAuthGuard)
   async getRecent(@Req() req: any) {

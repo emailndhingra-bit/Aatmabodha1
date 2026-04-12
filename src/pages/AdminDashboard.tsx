@@ -13,6 +13,21 @@ const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://aatmabodha1-backend
 
 const USD_TO_INR = 92.47;
 
+const CATEGORY_COLORS: Record<string, string> = {
+  CAREER: '#378ADD',
+  MARRIAGE: '#D4537E',
+  HEALTH: '#639922',
+  WEALTH: '#BA7517',
+  PROPERTY: '#7F77DD',
+  CHILDREN: '#1D9E75',
+  TRAVEL: '#5DCAA5',
+  SPIRITUAL: '#D85A30',
+  PERSONALITY: '#534AB7',
+  TIMING: '#888780',
+  GENERAL: '#444441',
+  VEHICLE: '#5B8FC7',
+};
+
 const REPORT_TYPE_BADGE: Record<string, { bg: string; color: string }> = {
   life_book: { bg: 'rgba(139, 92, 246, 0.28)', color: '#d8b4fe' },
   hidden_gems: { bg: 'rgba(245, 158, 11, 0.22)', color: '#fcd34d' },
@@ -42,6 +57,8 @@ export default function AdminDashboard() {
   const [reportsPage, setReportsPage] = useState(1);
   const [reportTypeFilter, setReportTypeFilter] = useState<string>('');
   const [reportsLoading, setReportsLoading] = useState(false);
+  const [adminQuestionRows, setAdminQuestionRows] = useState<any[]>([]);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
 
   const token = localStorage.getItem('auth_token');
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
@@ -58,9 +75,25 @@ export default function AdminDashboard() {
     setStats(d);
   };
 
+  const fetchAdminQuestions = async () => {
+    setQuestionsLoading(true);
+    try {
+      const r = await fetch(`${BACKEND}/api/questions/admin/list`, { headers });
+      if (r.ok) setAdminQuestionRows(await r.json());
+      else setAdminQuestionRows([]);
+    } finally {
+      setQuestionsLoading(false);
+    }
+  };
+
   useEffect(() => {
     Promise.all([fetchUsers(), fetchStats()]).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (tab !== 'questions') return;
+    void fetchAdminQuestions();
+  }, [tab]);
 
   const fetchReportStats = async () => {
     const r = await fetch(`${BACKEND}/api/admin/reports/stats`, { headers });
@@ -141,8 +174,6 @@ export default function AdminDashboard() {
 
   const statusColor: Record<string, string> = { approved: '#1a7a3e', pending: '#7a5c00', rejected: '#7a1a1a' };
   const statusBg: Record<string, string> = { approved: '#d4edda', pending: '#fff3cd', rejected: '#f8d7da' };
-
-  const questionRows = stats?.recentQuestions ?? stats?.logs ?? [];
 
   if (loading) return <div style={{ padding: 40, color: '#ccc', background: '#0d0d1a', minHeight: '100vh' }}>Loading admin data...</div>;
 
@@ -242,33 +273,57 @@ export default function AdminDashboard() {
       {/* QUESTIONS TAB */}
       {tab === 'questions' && (
         <div>
-          {questionRows.length === 0 ? (
+          {questionsLoading ? (
+            <div style={{ color: '#888', padding: 20, fontSize: 13 }}>Loading questions…</div>
+          ) : adminQuestionRows.length === 0 ? (
             <div style={{ color: '#666', padding: 20, fontSize: 13 }}>No questions logged yet.</div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: '#1a1a2e' }}>
-                    {['User Hash', 'Question', 'Language', 'Cache', 'Cost', 'Time'].map(h => (
+                    {['User Hash', 'Category', 'Language', 'Cache', 'Cost', 'Time'].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: '#888', fontWeight: 500, borderBottom: '1px solid #2a2a4a' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {questionRows.map((q: any, i: number) => (
-                    <tr key={q.id ?? i} style={{ borderBottom: '1px solid #1a1a2e' }}>
-                      <td style={{ padding: '10px 12px', color: '#888', fontFamily: 'monospace' }}>{q.userHash}</td>
-                      <td style={{ padding: '10px 12px', color: '#ccc', maxWidth: 300 }}>{q.questionText?.substring(0, 100)}{q.questionText?.length > 100 ? '...' : ''}</td>
-                      <td style={{ padding: '10px 12px', color: '#aaa' }}>{q.language || 'EN'}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{ color: q.cacheHit ? '#7bed9f' : '#aaa', fontWeight: q.cacheHit ? 600 : 400 }}>
-                          {q.cacheHit ? 'HIT' : 'MISS'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px 12px', color: '#c9a84c' }}>₹{((q.costUsd || 0) * USD_TO_INR).toFixed(4)}</td>
-                      <td style={{ padding: '10px 12px', color: '#666', fontSize: 11 }}>{new Date(q.createdAt).toLocaleString()}</td>
-                    </tr>
-                  ))}
+                  {adminQuestionRows.map((q: any, i: number) => {
+                    const cat = q.category || 'GENERAL';
+                    const bg = CATEGORY_COLORS[cat] || CATEGORY_COLORS.GENERAL;
+                    return (
+                      <tr key={`${q.userHash}-${i}`} style={{ borderBottom: '1px solid #1a1a2e' }}>
+                        <td style={{ padding: '10px 12px', color: '#888', fontFamily: 'monospace' }}>{q.userHash}</td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              padding: '4px 10px',
+                              borderRadius: 6,
+                              fontWeight: 600,
+                              fontSize: 11,
+                              letterSpacing: 0.5,
+                              color: '#fff',
+                              background: bg,
+                              border: '1px solid rgba(255,255,255,0.12)',
+                            }}
+                          >
+                            {cat}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px 12px', color: '#aaa' }}>{q.language || 'EN'}</td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span style={{ color: q.cacheHit ? '#7bed9f' : '#aaa', fontWeight: q.cacheHit ? 600 : 400 }}>
+                            {q.cacheHit ? 'HIT' : 'MISS'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px 12px', color: '#c9a84c' }}>₹{q.costInr ?? '0.0000'}</td>
+                        <td style={{ padding: '10px 12px', color: '#666', fontSize: 11 }}>
+                          {q.time ? new Date(q.time).toLocaleString() : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

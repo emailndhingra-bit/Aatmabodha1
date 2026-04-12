@@ -25,6 +25,23 @@ export class QuestionsService {
     return Math.ceil(text.length / 4);
   }
 
+  private categorizeQuestion(text: string): string {
+    const q = text.toLowerCase();
+    if (q.match(/shaadi|marriage|partner|love|vivah|spouse|wife|husband|pyaar|breakup|divorce|girlfriend|boyfriend|rishta/))
+      return 'MARRIAGE';
+    if (q.match(/career|job|business|naukri|promotion|salary|profession|startup|vyapar|interview|resign|mlc|politics|political/))
+      return 'CAREER';
+    if (q.match(/health|bimari|sehat|doctor|hospital|sick|illness|pain|surgery|disease|stress|anxiety/)) return 'HEALTH';
+    if (q.match(/money|paisa|dhan|wealth|income|financial|loan|debt|savings|investment|stocks|profit/)) return 'WEALTH';
+    if (q.match(/car|gadi|vehicle|property|ghar|home|house|plot|land|flat|apartment/)) return 'PROPERTY';
+    if (q.match(/child|baccha|pregnancy|putra|santaan|son|daughter/)) return 'CHILDREN';
+    if (q.match(/travel|videsh|foreign|abroad|visa|passport/)) return 'TRAVEL';
+    if (q.match(/spiritual|soul|karma|past life|ishta|moksha|dharma|meditation|mantra/)) return 'SPIRITUAL';
+    if (q.match(/personality|nature|character|psychology|unique|trait|who am i|tattoo/)) return 'PERSONALITY';
+    if (q.match(/kab|when|timing|future|prediction|2025|2026|2027|turning point/)) return 'TIMING';
+    return 'GENERAL';
+  }
+
   async logQuestion(data: {
     userId: string;
     question: string;
@@ -46,7 +63,37 @@ export class QuestionsService {
       language:        data.language || 'EN',
       cacheHit:        data.cacheHit || false,
     });
-    return this.repo.save(log);
+    const saved = await this.repo.save(log);
+    await this.repo.update(saved.id, {
+      questionCategory: this.categorizeQuestion(data.question || ''),
+    });
+    return saved;
+  }
+
+  async getAdminQuestions(limit = 50): Promise<any[]> {
+    const rows = await this.repo.find({
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    return rows.map((q) => ({
+      userHash: (q.userHash || '').substring(0, 10) + '...',
+      category: q.questionCategory || this.categorizeQuestion(q.questionText || ''),
+      language: q.language,
+      cacheHit: q.cacheHit,
+      costInr: q.costUsd ? (q.costUsd * 92.47).toFixed(4) : '0.0000',
+      time: q.createdAt,
+    }));
+  }
+
+  async categorizeAllExisting(): Promise<void> {
+    const all = await this.repo.find();
+    for (const q of all) {
+      if (!q.questionCategory) {
+        await this.repo.update(q.id, {
+          questionCategory: this.categorizeQuestion(q.questionText || ''),
+        });
+      }
+    }
   }
 
   async getStats(): Promise<any> {
