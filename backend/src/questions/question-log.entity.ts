@@ -8,8 +8,8 @@ export class QuestionLog {
   @Column()
   userHash: string;
 
-  @Column({ type: 'text' })
-  questionText: string;
+  @Column({ type: 'text', nullable: true })
+  questionText: string | null;
 
   @Column({ type: 'text', nullable: true })
   responsePreview: string;

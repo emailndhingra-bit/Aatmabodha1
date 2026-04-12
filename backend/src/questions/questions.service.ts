@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, MoreThanOrEqual, Repository } from 'typeorm';
 import { QuestionLog } from './question-log.entity';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class QuestionsService {
+  private hasNullified = false;
+
   constructor(
     @InjectRepository(QuestionLog)
     private repo: Repository<QuestionLog>,
@@ -42,6 +44,30 @@ export class QuestionsService {
     return 'GENERAL';
   }
 
+  private detectQuestionIntent(text: string): string {
+    const q = text.toLowerCase();
+    if (/\b(worst|terrible|broken|crisis|bikhar|toot|tabah)\b/.test(q)) return 'CRISIS';
+    if (/\b(urgent|help|please|scared|afraid|dar|madad|bacha)\b/.test(q)) return 'ANXIETY';
+    if (/\b(grow|expand|want|achieve|badhna|kamyabi|safal)\b/.test(q)) return 'AMBITION';
+    if (/\b(confirm|right|correct|should|sahi|theek)\b/.test(q)) return 'VALIDATION';
+    if (/\b(curious|wonder|interesting|jaanna|shauk)\b/.test(q)) return 'CURIOSITY';
+    if (/\b(plan|when|how|strategy|kab|kaise|yojna)\b/.test(q)) return 'PLANNING';
+    return 'GENERAL';
+  }
+
+  private detectEmotionalTone(text: string): string {
+    const q = text.toLowerCase();
+    if (/(just\s+curious|wondering|sirf\s+jaanna)/.test(q)) return 'CALM';
+    if (/\b(please|desperate|nothing\s+works|scared|bahut\s+dar)\b/.test(q)) return 'URGENT';
+    if (/\b(help|lost|dont\s+know|do\s+not\s+know|samajh\s+nahi)\b/.test(q) || /don\x27t\s+know/.test(q))
+      return 'CONFUSED';
+    if (/\b(excited|hope|want|ummeed|asha)\b/.test(q)) return 'HOPEFUL';
+    if (/\b(failed|broken|worst|fail|toot\s+gaya)\b/.test(q)) return 'DESPERATE';
+    return 'NEUTRAL';
+  }
+
+  // DPDPA 2023: questionText intentionally not stored.
+  // Only anonymized behavioral + astrological context saved.
   async logQuestion(data: {
     userId: string;
     question: string;
@@ -49,35 +75,73 @@ export class QuestionsService {
     language?: string;
     cacheHit?: boolean;
     costUsd?: number;
+    sessionId?: string;
   }): Promise<QuestionLog> {
     const inputTokens  = this.estimateTokens(data.question);
     const outputTokens = this.estimateTokens(data.response);
+    const userHash = this.hashUser(data.userId);
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const todayCount = await this.repo.count({
+      where: {
+        userHash,
+        createdAt: MoreThanOrEqual(startOfToday),
+      },
+    });
+    const sessionDepth = todayCount + 1;
+    const sessionId =
+      data.sessionId ?? `${Date.now()}-${userHash.slice(0, 8)}`;
 
     const log = this.repo.create({
-      userHash:        this.hashUser(data.userId),
-      questionText:    data.question.substring(0, 500),
+      userHash,
+      questionText: null, // DPDPA 2023 compliance
+      questionCategory: this.categorizeQuestion(data.question || ''),
       responsePreview: data.response.substring(0, 200),
       inputTokens,
       outputTokens,
-      costUsd:         data.costUsd || 0,
-      language:        data.language || 'EN',
-      cacheHit:        data.cacheHit || false,
+      costUsd: data.costUsd || 0,
+      language: data.language || 'EN',
+      cacheHit: data.cacheHit || false,
+      questionIntent: this.detectQuestionIntent(data.question || ''),
+      emotionalTone: this.detectEmotionalTone(data.question || ''),
+      sessionId,
+      sessionDepth,
     });
-    const saved = await this.repo.save(log);
-    await this.repo.update(saved.id, {
-      questionCategory: this.categorizeQuestion(data.question || ''),
+    return this.repo.save(log);
+  }
+
+  async nullifyQuestionText(): Promise<void> {
+    const uncategorized = await this.repo.find({
+      where: { questionCategory: IsNull() },
     });
-    return saved;
+    for (const q of uncategorized) {
+      await this.repo.update(q.id, {
+        questionCategory: this.categorizeQuestion(q.questionText || ''),
+        questionText: null,
+      });
+    }
+
+    await this.repo
+      .createQueryBuilder()
+      .update(QuestionLog)
+      .set({ questionText: null })
+      .where('questionText IS NOT NULL')
+      .execute();
   }
 
   async getAdminQuestions(limit = 100): Promise<any[]> {
+    if (!this.hasNullified) {
+      await this.nullifyQuestionText();
+      this.hasNullified = true;
+    }
     const rows = await this.repo.find({
       order: { createdAt: 'DESC' },
       take: limit,
     });
     return rows.map((q) => ({
       userHash: (q.userHash || '').substring(0, 10) + '...',
-      category: q.questionCategory || this.categorizeQuestion(q.questionText || ''),
+      category: q.questionCategory || 'GENERAL',
       language: q.language,
       cacheHit: q.cacheHit,
       costInr: q.costUsd ? (q.costUsd * 92.47).toFixed(4) : '0.0000',

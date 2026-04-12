@@ -1319,6 +1319,9 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
                   className="w-full rounded-xl border border-indigo-500/35 bg-[#0f0c29] px-3 py-2.5 text-sm text-indigo-100 placeholder:text-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-amber-500/40"
                 />
                 <p className="text-[10px] text-indigo-400/60 mt-1.5">Optional — can skip</p>
+                <p className="text-[10px] text-slate-500/90 mt-2 leading-relaxed max-w-md">
+                  Aapke sawaalon ka text store nahi hota. Sirf anonymized patterns save kiye jaate hain.
+                </p>
               </div>
 
               <button
