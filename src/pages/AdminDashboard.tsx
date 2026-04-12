@@ -193,7 +193,7 @@ export default function AdminDashboard() {
       {stats && (
         <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
           {[
-            { label: 'Total Questions', val: stats.totalQuestions ?? 0 },
+            { label: 'Total Questions', val: Number(stats.totalQuestions ?? 0) },
             { label: 'Total Cost (INR)', val: `₹${((stats.totalCost ?? 0) * USD_TO_INR).toFixed(2)}` },
             { label: 'Avg Cost/Q (INR)', val: `₹${((stats.avgCostPerQuestion ?? 0) * USD_TO_INR).toFixed(4)}` },
             { label: 'Cache Hits', val: stats.cacheHits ?? 0 },
@@ -270,9 +270,16 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* QUESTIONS TAB */}
+      {/* QUESTIONS TAB — totalQuestions from /api/admin/stats, not list length */}
       {tab === 'questions' && (
         <div>
+          <div style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>
+            Total in database:{' '}
+            <strong style={{ color: '#c9a84c' }}>{Number(stats?.totalQuestions ?? 0)}</strong>
+            {!questionsLoading && adminQuestionRows.length > 0 && (
+              <span style={{ color: '#666' }}> · Showing {adminQuestionRows.length} most recent</span>
+            )}
+          </div>
           {questionsLoading ? (
             <div style={{ color: '#888', padding: 20, fontSize: 13 }}>Loading questions…</div>
           ) : adminQuestionRows.length === 0 ? (
@@ -343,7 +350,7 @@ export default function AdminDashboard() {
                 { label: 'Total Cost (INR)', val: `₹${((stats?.totalCost ?? 0) * USD_TO_INR).toFixed(2)}` },
                 { label: 'Avg Cost/Q (INR)', val: `₹${((stats?.avgCostPerQuestion ?? 0) * USD_TO_INR).toFixed(4)}` },
                 { label: 'Cache Hit Questions', val: stats?.cacheHits ?? 0 },
-                { label: 'Total Questions', val: stats?.totalQuestions ?? 0 },
+                { label: 'Total Questions', val: Number(stats?.totalQuestions ?? 0) },
               ].map(row => (
                 <div key={row.label} style={{ background: '#141428', border: '1px solid #2a2a4a', borderRadius: 8, padding: '10px 12px' }}>
                   <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>{row.label}</div>

@@ -70,7 +70,7 @@ export class QuestionsService {
     return saved;
   }
 
-  async getAdminQuestions(limit = 50): Promise<any[]> {
+  async getAdminQuestions(limit = 100): Promise<any[]> {
     const rows = await this.repo.find({
       order: { createdAt: 'DESC' },
       take: limit,
@@ -97,12 +97,27 @@ export class QuestionsService {
   }
 
   async getStats(): Promise<any> {
+    const totalQuestions = await this.repo.count();
+
+    const sumRow = await this.repo
+      .createQueryBuilder('q')
+      .select('COALESCE(SUM(q.costUsd), 0)', 'totalCost')
+      .getRawOne<{ totalCost: string }>();
+    const totalCost = parseFloat(String(sumRow?.totalCost ?? 0)) || 0;
+
+    const cacheHits = await this.repo.count({ where: { cacheHit: true } });
+
     const logs = await this.repo.find({ order: { createdAt: 'DESC' }, take: 200 });
-    const totalCost    = logs.reduce((sum, l) => sum + l.costUsd, 0);
-    const totalQ       = logs.length;
-    const cacheHits    = logs.filter(l => l.cacheHit).length;
-    const avgCost      = totalQ > 0 ? totalCost / totalQ : 0;
-    return { logs, totalCost, totalQuestions: totalQ, cacheHits, avgCostPerQuestion: avgCost };
+    const avgCostPerQuestion =
+      totalQuestions > 0 ? totalCost / totalQuestions : 0;
+
+    return {
+      logs,
+      totalCost,
+      totalQuestions,
+      cacheHits,
+      avgCostPerQuestion,
+    };
   }
 
   async getRecentQuestions(limit = 50): Promise<QuestionLog[]> {
