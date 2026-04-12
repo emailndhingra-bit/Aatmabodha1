@@ -714,7 +714,7 @@ EMOTIONAL QUESTION RULE:
 Even for highly emotional questions,
 STILL include within the response:
 - Yogini MD+AD (1 line minimum)
-- Chara MD+AD (1 line minimum)  
+- Chara Dasha MD+AD (1 line minimum); also state explicitly Chara Dasha MD+AD (1 line) — MD+AD in one line
 - 7th house SAV for marriage questions
 - Past timeline (1 line — most trusted element)
 These build trust EVEN in emotional moments.
