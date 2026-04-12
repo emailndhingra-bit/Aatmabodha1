@@ -44,6 +44,7 @@ interface QAPair {
 
 // --- COSMIC LOADING MESSAGES (GLORIFIED RISHI SCIENCE) ---
 const COSMIC_LOADING_MESSAGES = [
+    "Tumhara jawab aa raha hai...\nGuruji thoda time lete hain. (up to 3 min)",
     "Initiating Rishi-Level Deep Scan Protocols...",
     "Triangulating D1 (Rashi) with D9 (Navamsha) Coordinates...",
     "⚡ DETECTING BHAVA CHALIT SHIFTS (Manifestation Check)...",
@@ -375,16 +376,20 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
     scrollToBottom();
   }, [messages, loading, visualizing]);
 
-  // Loading Message Rotation Logic
+  // Loading Message Rotation Logic (always start with 3-min wait copy, then cycle)
   useEffect(() => {
-    let interval: any;
+    let interval: ReturnType<typeof setInterval> | undefined;
+    let idx = 0;
     if (loading) {
-      setLoadingMessage(COSMIC_LOADING_MESSAGES[Math.floor(Math.random() * COSMIC_LOADING_MESSAGES.length)]);
+      setLoadingMessage(COSMIC_LOADING_MESSAGES[0]);
       interval = setInterval(() => {
-        setLoadingMessage(COSMIC_LOADING_MESSAGES[Math.floor(Math.random() * COSMIC_LOADING_MESSAGES.length)]);
-      }, 2500); // Cycle message every 2.5 seconds
+        idx = (idx + 1) % COSMIC_LOADING_MESSAGES.length;
+        setLoadingMessage(COSMIC_LOADING_MESSAGES[idx]);
+      }, 6000);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [loading]);
 
   useEffect(() => {
@@ -1295,7 +1300,7 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
              </div>
              <div className="flex items-center gap-2 mb-3 text-xs font-bold text-amber-500 uppercase tracking-wider bg-[#1a1638] px-4 py-2 rounded-full border border-amber-900/30 shadow-[0_0_20px_rgba(245,158,11,0.3)] animate-pulse">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="font-serif tracking-widest">{loadingMessage}</span>
+                <span className="font-serif tracking-widest whitespace-pre-line text-center">{loadingMessage}</span>
              </div>
           </div>
         )}

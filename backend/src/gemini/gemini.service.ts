@@ -2,8 +2,8 @@ import { createHash } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { QuestionsService } from '../questions/questions.service';
 
-/** Chat generateContent: Render cold starts + Gemini can exceed 30s easily */
-const CHAT_GENERATE_TIMEOUT_MS = 180_000;
+/** Gemini REST generateContent (chat, reports, images) — allow long model latency */
+const GEMINI_GENERATE_TIMEOUT_MS = 170000;
 
 function isAbortError(err: unknown): boolean {
   if (err instanceof Error && err.name === 'AbortError') return true;
@@ -103,17 +103,35 @@ export class GeminiService {
       }));
       parts.push({ text: prompt });
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
-        {
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), GEMINI_GENERATE_TIMEOUT_MS);
+      let res: Response;
+      try {
+        res = await fetch(geminiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts }],
             generationConfig: responseFormat === 'json' ? { responseMimeType: 'application/json' } : {},
           }),
-        },
-      );
+          signal: controller.signal,
+        });
+      } catch (err: unknown) {
+        if (isAbortError(err)) {
+          return {
+            text: '',
+            error: 'The model request timed out. Please try again.',
+            cacheHit: false,
+            costUsd: 0,
+            inputTokens: 0,
+            outputTokens: 0,
+          };
+        }
+        throw err;
+      } finally {
+        clearTimeout(timeoutId);
+      }
       const data = await res.json();
       let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
       text = this.truncatePreservingSugg(text, String(prompt || ''));
@@ -243,7 +261,7 @@ export class GeminiService {
     }
 
     const genController = new AbortController();
-    const genTimeout = setTimeout(() => genController.abort(), CHAT_GENERATE_TIMEOUT_MS);
+    const genTimeout = setTimeout(() => genController.abort(), GEMINI_GENERATE_TIMEOUT_MS);
     try {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
@@ -311,17 +329,28 @@ export class GeminiService {
     }));
     parts.push({ text: prompt });
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${this.apiKey}`,
-      {
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${this.apiKey}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), GEMINI_GENERATE_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(geminiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts }],
           generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
         }),
-      },
-    );
+        signal: controller.signal,
+      });
+    } catch (err: unknown) {
+      if (isAbortError(err)) {
+        return { error: 'The model request timed out. Please try again.' };
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+    }
     const data = await res.json();
     for (const part of data?.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {

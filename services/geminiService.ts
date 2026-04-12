@@ -97,29 +97,48 @@ const callGeminiChat = async (
     userQuestion?: string,
     natalFingerprint?: string,
 ): Promise<GeminiChatResult> => {
-    const res = await fetch(`${BACKEND_URL}/api/gemini-chat`, {
-        method: "POST",
-        headers: jsonAuthHeaders(),
-        body: JSON.stringify({
-            model: GEMINI_MODEL,
-            systemInstruction,
-            history,
-            message: newMessage,
-            ...(natalFingerprint ? { natalFingerprint } : {}),
-            ...(userQuestion != null && userQuestion !== ""
-                ? { userQuestion }
-                : {}),
-        }),
-    });
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `Backend chat error: ${res.status}`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 175000);
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/gemini-chat`, {
+            method: "POST",
+            headers: jsonAuthHeaders(),
+            signal: controller.signal,
+            body: JSON.stringify({
+                model: GEMINI_MODEL,
+                systemInstruction,
+                history,
+                message: newMessage,
+                ...(natalFingerprint ? { natalFingerprint } : {}),
+                ...(userQuestion != null && userQuestion !== ""
+                    ? { userQuestion }
+                    : {}),
+            }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || `Backend chat error: ${res.status}`);
+        }
+        const data = await res.json();
+        if (data?.error) {
+            return { text: "", error: String(data.error) };
+        }
+        return { text: data.text || "" };
+    } catch (e: unknown) {
+        const aborted =
+            (e instanceof Error && e.name === "AbortError") ||
+            (typeof DOMException !== "undefined" &&
+                e instanceof DOMException &&
+                e.name === "AbortError");
+        if (aborted) {
+            throw new Error(
+                "Request timed out while waiting for Guruji (over ~3 min). Your chart is safe — please try again.",
+            );
+        }
+        throw e;
+    } finally {
+        clearTimeout(timeoutId);
     }
-    const data = await res.json();
-    if (data?.error) {
-        return { text: "", error: String(data.error) };
-    }
-    return { text: data.text || "" };
 };
 
 // ─────────────────────────────────────────────────────────────
