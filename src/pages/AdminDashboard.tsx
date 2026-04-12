@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, Fragment } from 'react';
 import {
   Chart as ChartJS,
   ArcElement,
@@ -94,6 +94,12 @@ type StatsLog = {
   createdAt?: string | Date;
   sessionDepth?: number | null;
   sessionId?: string | null;
+  dashaAtTime?: string | null;
+  moonSignAtTime?: string | null;
+  userMoonSign?: string | null;
+  userLagna?: string | null;
+  userSadeSati?: boolean | null;
+  ageGroup?: string | null;
 };
 
 function normalizeLogs(stats: any): StatsLog[] {
@@ -110,6 +116,12 @@ function normalizeLogs(stats: any): StatsLog[] {
     createdAt: r.createdAt,
     sessionDepth: r.sessionDepth ?? null,
     sessionId: r.sessionId ?? null,
+    dashaAtTime: r.dashaAtTime ?? null,
+    moonSignAtTime: r.moonSignAtTime ?? null,
+    userMoonSign: r.userMoonSign ?? null,
+    userLagna: r.userLagna ?? null,
+    userSadeSati: r.userSadeSati ?? null,
+    ageGroup: r.ageGroup ?? null,
   }));
 }
 
@@ -312,6 +324,296 @@ function buildAnalyticsModel(stats: any, users: any[]) {
   };
 }
 
+const TONE_STACK_COLORS: Record<string, string> = {
+  URGENT: '#ef4444',
+  HOPEFUL: '#22c55e',
+  CONFUSED: '#f59e0b',
+  DESPERATE: '#7f1d1d',
+  CALM: '#3b82f6',
+  NEUTRAL: '#64748b',
+};
+
+const MOCK_DASHA_GROUPS = ['Saturn MD', 'Rahu MD', 'Jupiter MD', 'Ketu MD'];
+const DASHA_CHART_CATS = ['CAREER', 'MARRIAGE', 'HEALTH', 'WEALTH', 'SPIRITUAL', 'TIMING'] as const;
+/** Illustrative counts — shown only when dashaAtTime is empty in logs */
+const MOCK_DASHA_MATRIX: number[][] = [
+  [18, 6, 4, 8, 5, 7],
+  [5, 4, 2, 22, 3, 4],
+  [12, 9, 6, 5, 4, 11],
+  [3, 8, 5, 4, 14, 2],
+];
+
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function normCategory(c: string | null | undefined): string {
+  const u = (c || 'GENERAL').toUpperCase();
+  return ANALYTICS_CATEGORIES.includes(u as (typeof ANALYTICS_CATEGORIES)[number]) ? u : 'GENERAL';
+}
+
+function normTone(t: string | null | undefined): string {
+  const u = (t || 'NEUTRAL').toUpperCase();
+  return (TONE_KEYS as readonly string[]).includes(u) ? u : 'NEUTRAL';
+}
+
+function planetFromDasha(d: string | null | undefined): string | null {
+  if (!d || !String(d).trim()) return null;
+  const m = String(d).trim().match(/^([A-Za-z]+)/);
+  return m ? `${m[1]} MD` : null;
+}
+
+function buildProjectKarmaModel(stats: any) {
+  const logs = normalizeLogs(stats);
+  const sample = logs.length;
+  const records = Number(stats?.totalQuestions ?? 0);
+  const estRupee = (records / 2_000_000) * 50_000_000;
+  const estLakh = estRupee / 100_000;
+  const pct = (pred: (l: StatsLog) => boolean) =>
+    sample === 0 ? 0 : (logs.filter(pred).length / sample) * 100;
+  const pctCat = pct((l) => Boolean(l.questionCategory));
+  const pctInt = pct((l) => Boolean(l.questionIntent));
+  const pctTon = pct((l) => Boolean(l.emotionalTone));
+  const pctDep = pct((l) => l.sessionDepth != null && l.sessionDepth !== undefined);
+  const pctDasha = pct((l) => Boolean(l.dashaAtTime && String(l.dashaAtTime).trim()));
+  const pctMoon = pct((l) => Boolean(l.moonSignAtTime && String(l.moonSignAtTime).trim()));
+  const pctNatalMoon = pct((l) => Boolean(l.userMoonSign && String(l.userMoonSign).trim()));
+  const pctLagna = pct((l) => Boolean(l.userLagna && String(l.userLagna).trim()));
+  const pctSade = pct((l) => l.userSadeSati === true || l.userSadeSati === false);
+  const pctAge = pct((l) => Boolean(l.ageGroup && String(l.ageGroup).trim()));
+  const completenessCore = (pctCat + pctInt + pctTon + pctDep) / 4;
+  const completenessAll =
+    (pctCat + pctInt + pctTon + pctDep + pctDasha + pctMoon + pctNatalMoon + pctLagna + pctSade + pctAge) / 10;
+  const valueScorePct = Math.round(completenessAll * 10) / 10;
+
+  const hasRealDasha = logs.some((l) => l.dashaAtTime && String(l.dashaAtTime).trim());
+  let dashaUseMock = !hasRealDasha && sample > 0;
+  if (sample === 0) dashaUseMock = true;
+  const dashaGroupLabels = dashaUseMock ? [...MOCK_DASHA_GROUPS] : [...new Set(logs.map((l) => planetFromDasha(l.dashaAtTime)).filter(Boolean))] as string[];
+  if (!dashaUseMock && dashaGroupLabels.length === 0) dashaUseMock = true;
+  const dashaLabels = [...DASHA_CHART_CATS];
+  const dashaDatasets: { label: string; data: number[]; backgroundColor: string }[] = [];
+  if (dashaUseMock) {
+    const colors = ['#94a3b8', '#c9a96e', '#818cf8', '#f97316'];
+    MOCK_DASHA_GROUPS.forEach((label, gi) => {
+      dashaDatasets.push({
+        label,
+        data: [...MOCK_DASHA_MATRIX[gi]],
+        backgroundColor: colors[gi % colors.length],
+      });
+    });
+  } else {
+    const palette = ['#94a3b8', '#c9a96e', '#818cf8', '#f97316', '#22c55e', '#d946ef'];
+    dashaGroupLabels.forEach((g, gi) => {
+      const row = dashaLabels.map((cat) =>
+        logs.filter((l) => planetFromDasha(l.dashaAtTime) === g && normCategory(l.questionCategory) === cat).length,
+      );
+      dashaDatasets.push({ label: g, data: row, backgroundColor: palette[gi % palette.length] });
+    });
+  }
+
+  const stackCats = ['CAREER', 'MARRIAGE', 'HEALTH', 'WEALTH', 'SPIRITUAL', 'GENERAL'];
+  const stackedToneDatasets = TONE_KEYS.map((tone) => ({
+    label: tone,
+    stack: 'tones',
+    data: stackCats.map(
+      (cat) => logs.filter((l) => normCategory(l.questionCategory) === cat && normTone(l.emotionalTone) === tone).length,
+    ),
+    backgroundColor: TONE_STACK_COLORS[tone] || '#64748b',
+  }));
+
+  const journeyMap = new Map<string, number>();
+  const sorted = [...logs].sort((a, b) => {
+    const ha = a.userHash || '';
+    const hb = b.userHash || '';
+    if (ha !== hb) return ha.localeCompare(hb);
+    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return ta - tb;
+  });
+  for (let i = 1; i < sorted.length; i++) {
+    if ((sorted[i].userHash || '') !== (sorted[i - 1].userHash || '')) continue;
+    const a = normCategory(sorted[i - 1].questionCategory);
+    const b = normCategory(sorted[i].questionCategory);
+    if (a === b) continue;
+    const key = `${a} → ${b}`;
+    journeyMap.set(key, (journeyMap.get(key) || 0) + 1);
+  }
+  const journeyRows = [...journeyMap.entries()].sort((x, y) => y[1] - x[1]).slice(0, 24);
+  type JourneyRow = { from: string; to: string; count: number; mock: boolean };
+  const journeyParsed: JourneyRow[] = journeyRows.map(([k, c]) => {
+    const parts = k.split(' → ');
+    return { from: parts[0]?.trim() || '—', to: parts[1]?.trim() || '—', count: c, mock: false };
+  });
+  const journeyUseMock = journeyParsed.length === 0;
+  const journeyDisplay: JourneyRow[] = journeyUseMock
+    ? [
+        { from: 'CAREER', to: 'MARRIAGE', count: 12, mock: true },
+        { from: 'CAREER', to: 'WEALTH', count: 8, mock: true },
+        { from: 'MARRIAGE', to: 'HEALTH', count: 6, mock: true },
+        { from: 'WEALTH', to: 'SPIRITUAL', count: 5, mock: true },
+        { from: 'HEALTH', to: 'CAREER', count: 4, mock: true },
+      ]
+    : journeyParsed;
+
+  const hasAge = logs.some((l) => l.ageGroup && String(l.ageGroup).trim());
+  const ageUseMock = !hasAge && sample > 0;
+  const ageGroups = ageUseMock ? ['18–27', '28–42', '43–55', '55+'] : [...new Set(logs.map((l) => l.ageGroup).filter(Boolean))] as string[];
+  const ageMockMatrix: number[][] = [
+    [8, 4, 2, 6, 3, 5],
+    [12, 9, 5, 8, 4, 7],
+    [6, 11, 8, 5, 6, 4],
+    [3, 5, 14, 4, 9, 6],
+  ];
+  const ageDatasets = ageGroups.map((ag, gi) => ({
+    label: ag,
+    data: stackCats.map((cat) => {
+      if (ageUseMock) return ageMockMatrix[gi]?.[stackCats.indexOf(cat)] ?? 0;
+      return logs.filter((l) => l.ageGroup === ag && normCategory(l.questionCategory) === cat).length;
+    }),
+    backgroundColor: ['#c9a96e', '#818cf8', '#34d399', '#f472b6'][gi % 4],
+  }));
+
+  const isHindi = (l: StatsLog) => bucketLanguage(l.language) === 'Hindi';
+  const isEnglish = (l: StatsLog) => bucketLanguage(l.language) === 'English';
+  const hi = logs.filter(isHindi);
+  const en = logs.filter(isEnglish);
+  const avgDepth = (arr: StatsLog[]) =>
+    arr.length === 0 ? 0 : arr.reduce((s, l) => s + (Number(l.sessionDepth) || 0), 0) / arr.length;
+  const urgentFrac = (arr: StatsLog[]) =>
+    arr.length === 0
+      ? 0
+      : arr.filter((l) => ['URGENT', 'DESPERATE'].includes(normTone(l.emotionalTone))).length / arr.length;
+  const avgCostInr = (arr: StatsLog[]) =>
+    arr.length === 0 ? 0 : (arr.reduce((s, l) => s + (l.costUsd || 0), 0) / arr.length) * USD_TO_INR;
+
+  const heat: number[][] = Array.from({ length: 24 }, () => Array(7).fill(0));
+  for (const l of logs) {
+    if (!l.createdAt) continue;
+    const d = new Date(l.createdAt);
+    if (Number.isNaN(d.getTime())) continue;
+    heat[d.getHours()][d.getDay()]++;
+  }
+  let peakH = 0;
+  let peakD = 0;
+  let peakV = -1;
+  for (let h = 0; h < 24; h++) {
+    for (let wd = 0; wd < 7; wd++) {
+      if (heat[h][wd] > peakV) {
+        peakV = heat[h][wd];
+        peakH = h;
+        peakD = wd;
+      }
+    }
+  }
+  const minSlot = heat.flat().every((v) => v === 0)
+    ? null
+    : (() => {
+        let mh = 0;
+        let md = 0;
+        let mv = Infinity;
+        for (let h = 0; h < 24; h++) {
+          for (let wd = 0; wd < 7; wd++) {
+            const v = heat[h][wd];
+            if (v < mv) {
+              mv = v;
+              mh = h;
+              md = wd;
+            }
+          }
+        }
+        return { h: mh, d: md, v: mv };
+      })();
+  const heatMax = Math.max(1, ...heat.flat());
+
+  const lateNightVol = [22, 23, 0].reduce((s, h) => s + heat[h].reduce((a, v) => a + v, 0), 0);
+  const morningVol = [6, 7].reduce((s, h) => s + heat[h].reduce((a, v) => a + v, 0), 0);
+  const peakInsight =
+    peakV <= 0
+      ? 'No timestamps in sample — heatmap uses zeros.'
+      : lateNightVol >= morningVol * 1.2
+        ? 'People seek guidance most at: 10PM–12AM (late-night volume dominates in this sample).'
+        : `Peak single hour slot: ${WEEKDAY_LABELS[peakD]} ${String(peakH).padStart(2, '0')}:00–${String((peakH + 1) % 24).padStart(2, '0')}:00 (${peakV} questions).`;
+  const lowInsight =
+    minSlot == null
+      ? 'Lowest: —'
+      : morningVol <= lateNightVol * 0.35 && morningVol > 0
+        ? 'Lowest: 6AM–8AM band (early morning is quiet vs evenings in this sample).'
+        : `Quietest slot in grid: ${WEEKDAY_LABELS[minSlot.d]} ${String(minSlot.h).padStart(2, '0')}:00 (${minSlot.v} questions).`;
+
+  const marr = logs.filter((l) => normCategory(l.questionCategory) === 'MARRIAGE');
+  const marrUrgentPct = marr.length ? (marr.filter((l) => normTone(l.emotionalTone) === 'URGENT').length / marr.length) * 100 : 0;
+  const marrUrgentDesperatePct = marr.length
+    ? (marr.filter((l) => ['URGENT', 'DESPERATE'].includes(normTone(l.emotionalTone))).length / marr.length) * 100
+    : 0;
+  const spir = logs.filter((l) => normCategory(l.questionCategory) === 'SPIRITUAL');
+  const spirCalmPct = spir.length ? (spir.filter((l) => normTone(l.emotionalTone) === 'CALM').length / spir.length) * 100 : 0;
+  const career = logs.filter((l) => normCategory(l.questionCategory) === 'CAREER');
+  const careerAmb = career.filter((l) => (l.questionIntent || '').toUpperCase() === 'AMBITION').length;
+  const careerAnx = career.filter((l) => (l.questionIntent || '').toUpperCase() === 'ANXIETY').length;
+
+  const fieldRows = [
+    { field: 'questionCategory', pct: pctCat },
+    { field: 'questionIntent', pct: pctInt },
+    { field: 'emotionalTone', pct: pctTon },
+    { field: 'sessionDepth', pct: pctDep },
+    { field: 'dashaAtTime', pct: pctDasha },
+    { field: 'moonSignAtTime', pct: pctMoon },
+    { field: 'userMoonSign', pct: pctNatalMoon },
+    { field: 'userLagna', pct: pctLagna },
+    { field: 'userSadeSati', pct: pctSade },
+    { field: 'ageGroup', pct: pctAge },
+  ].map((r) => ({
+    ...r,
+    filled: Math.min(records || sample, Math.round((r.pct / 100) * (records > 0 ? records : sample))),
+    status: r.pct >= 80 ? 'ready' : r.pct >= 20 ? 'building' : 'pending',
+  }));
+  const overallCompletenessPct = Math.round(completenessAll * 1000) / 10;
+
+  return {
+    logs,
+    sample,
+    records,
+    estLakh,
+    completenessCore,
+    completenessAll,
+    valueScorePct,
+    dashaUseMock,
+    dashaLabels,
+    dashaDatasets,
+    stackedToneDatasets,
+    stackCats,
+    journeyDisplay,
+    journeyUseMock,
+    ageUseMock,
+    ageDatasets,
+    heat,
+    heatMax,
+    peakH,
+    peakD,
+    peakV,
+    minSlot,
+    marrUrgentPct,
+    marrUrgentDesperatePct,
+    spirCalmPct,
+    careerAmb,
+    careerAnx,
+    careerN: career.length,
+    marrN: marr.length,
+    spirN: spir.length,
+    fieldRows,
+    overallCompletenessPct,
+    peakInsight,
+    lowInsight,
+    hiN: hi.length,
+    enN: en.length,
+    hiAvgDepth: avgDepth(hi),
+    enAvgDepth: avgDepth(en),
+    hiUrgentFrac: urgentFrac(hi),
+    enUrgentFrac: urgentFrac(en),
+    hiAvgCost: avgCostInr(hi),
+    enAvgCost: avgCostInr(en),
+  };
+}
+
 const chartFont = { family: 'system-ui, sans-serif' };
 const axisCommon = {
   ticks: { color: '#8a8a9a', font: chartFont },
@@ -320,7 +622,7 @@ const axisCommon = {
 };
 
 export default function AdminDashboard() {
-  const [tab, setTab] = useState<'users' | 'questions' | 'cost' | 'reports'>('users');
+  const [tab, setTab] = useState<'users' | 'questions' | 'cost' | 'karma' | 'reports'>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -384,6 +686,8 @@ export default function AdminDashboard() {
     () => (stats ? buildAnalyticsModel(stats, users) : null),
     [stats, users],
   );
+
+  const karmaModel = useMemo(() => (stats ? buildProjectKarmaModel(stats) : null), [stats]);
 
   const refreshAnalytics = useCallback(async () => {
     setAnalyticsRefreshing(true);
@@ -514,16 +818,32 @@ export default function AdminDashboard() {
 
       {/* TABS */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #2a2a4a', paddingBottom: 0 }}>
-        {(['users', 'questions', 'cost', 'reports'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)} style={{
-            padding: '8px 20px', cursor: 'pointer', border: 'none', borderRadius: '8px 8px 0 0',
-            background: tab === t ? '#1a1a3e' : 'transparent',
-            color: tab === t ? '#c9a84c' : '#666',
-            fontWeight: tab === t ? 600 : 400,
-            fontSize: 13, textTransform: 'capitalize',
-            borderBottom: tab === t ? '2px solid #c9a84c' : '2px solid transparent',
-          }}>
-            {t === 'users' ? `Users (${users.length})` : t === 'questions' ? 'Questions' : t === 'cost' ? 'Analytics' : 'Reports'}
+        {(['users', 'questions', 'cost', 'karma', 'reports'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            style={{
+              padding: '8px 20px',
+              cursor: 'pointer',
+              border: 'none',
+              borderRadius: '8px 8px 0 0',
+              background: tab === t ? '#1a1a3e' : 'transparent',
+              color: tab === t ? '#c9a84c' : '#666',
+              fontWeight: tab === t ? 600 : 400,
+              fontSize: 13,
+              textTransform: t === 'karma' ? 'none' : 'capitalize',
+              borderBottom: tab === t ? '2px solid #c9a84c' : '2px solid transparent',
+            }}
+          >
+            {t === 'users'
+              ? `Users (${users.length})`
+              : t === 'questions'
+                ? 'Questions'
+                : t === 'cost'
+                  ? 'Analytics'
+                  : t === 'karma'
+                    ? 'Project Karma'
+                    : 'Reports'}
           </button>
         ))}
       </div>
@@ -1171,6 +1491,550 @@ export default function AdminDashboard() {
                     ₹{Math.round(analyticsModel.costIfNoCacheInr).toLocaleString()}
                   </div>
                   <div style={{ fontSize: 11, color: '#5a5a6c', marginTop: 6 }}>Scaled from observed miss mix</div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* PROJECT KARMA TAB — sellable dataset intelligence */}
+      {tab === 'karma' && (
+        <div style={{ background: BG, borderRadius: 12, padding: '20px 16px 28px', border: `1px solid ${BORDER}` }}>
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              marginBottom: 20,
+            }}
+          >
+            <div>
+              <h2 style={{ color: GOLD, fontSize: 18, fontWeight: 700, margin: 0, letterSpacing: 0.5 }}>Project Karma</h2>
+              <p style={{ color: '#7a7a8c', fontSize: 12, margin: '6px 0 0' }}>
+                Sellable intelligence from <code style={{ color: '#9a9aaa' }}>stats.logs</code> sample + DB totals (
+                {karmaModel?.sample ?? 0} rows in sample)
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={analyticsRefreshing || !stats}
+              onClick={() => void refreshAnalytics()}
+              style={{
+                background: analyticsRefreshing ? '#2a2a38' : CARD,
+                color: GOLD,
+                border: `1px solid ${BORDER}`,
+                borderRadius: 8,
+                padding: '8px 18px',
+                cursor: analyticsRefreshing || !stats ? 'not-allowed' : 'pointer',
+                fontWeight: 600,
+                fontSize: 13,
+              }}
+            >
+              {analyticsRefreshing ? 'Refreshing…' : 'Refresh data'}
+            </button>
+          </div>
+
+          {!stats || !karmaModel ? (
+            <div style={{ color: '#888', padding: 40, textAlign: 'center' }}>Load stats to view Project Karma.</div>
+          ) : (
+            <>
+              {/* SECTION 1 — Moat header */}
+              <div
+                style={{
+                  background: `linear-gradient(135deg, ${CARD} 0%, #16161f 100%)`,
+                  border: `1px solid ${BORDER}`,
+                  borderRadius: 14,
+                  padding: '24px 22px',
+                  marginBottom: 22,
+                }}
+              >
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#f4f4f8', letterSpacing: 0.3 }}>Project Karma Dataset</div>
+                <div style={{ fontSize: 14, color: '#9a9aaf', marginTop: 8, maxWidth: 520, lineHeight: 1.45 }}>
+                  {"World's first Vedic behavioral intelligence database"}
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                    gap: 14,
+                    marginTop: 22,
+                  }}
+                >
+                  {[
+                    { label: 'Records', val: karmaModel.records.toLocaleString() },
+                    {
+                      label: 'Est. value',
+                      val: `₹${karmaModel.estLakh.toLocaleString(undefined, { maximumFractionDigits: 2 })} lakh`,
+                      sub: '(records / 2M × ₹5 crore in lakh)',
+                    },
+                    {
+                      label: 'Completeness',
+                      val: `${(karmaModel.completenessAll * 100).toFixed(1)}%`,
+                      sub: '10-field blend · logs sample',
+                    },
+                    { label: 'Target', val: '2,000,000 records' },
+                  ].map((s) => (
+                    <div key={s.label} style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 10, padding: '12px 14px' }}>
+                      <div style={{ fontSize: 10, color: '#6a6a7c', textTransform: 'uppercase', letterSpacing: 1 }}>{s.label}</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: GOLD, marginTop: 6 }}>{s.val}</div>
+                      {s.sub && <div style={{ fontSize: 10, color: '#5a5a6c', marginTop: 4 }}>{s.sub}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* SECTION 2 — Dasha × category */}
+              <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+                <h3 style={{ color: GOLD, fontSize: 15, margin: '0 0 4px' }}>Which Dasha triggers which questions?</h3>
+                <p style={{ color: '#6a6a7c', fontSize: 12, margin: '0 0 8px' }}>Core sellable insight · grouped counts by question category</p>
+                {karmaModel.dashaUseMock && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: '#fbbf24',
+                      background: 'rgba(251,191,36,0.08)',
+                      border: '1px solid rgba(251,191,36,0.25)',
+                      borderRadius: 8,
+                      padding: '8px 12px',
+                      marginBottom: 12,
+                    }}
+                  >
+                    Sample — populates with usage: <strong style={{ color: '#fcd34d' }}>dashaAtTime</strong> is empty in
+                    logs; chart shows labeled mock structure until real dasha tags arrive.
+                  </div>
+                )}
+                <div style={{ height: 280, position: 'relative' }}>
+                  <ChartJsBar
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      indexAxis: 'y',
+                      plugins: {
+                        legend: { position: 'bottom', labels: { color: '#a8a8b8', font: { size: 10 }, boxWidth: 12 } },
+                      },
+                      scales: { x: { ...axisCommon, beginAtZero: true, stacked: false }, y: { ...axisCommon, stacked: false } },
+                    }}
+                    data={{
+                      labels: karmaModel.dashaLabels,
+                      datasets: karmaModel.dashaDatasets.map((d) => ({
+                        ...d,
+                        borderWidth: 0,
+                        borderRadius: 4,
+                      })),
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginTop: 16 }}>
+                  {[
+                    'Saturn Dasha users ask 3× more CAREER questions',
+                    'Rahu Dasha = highest WEALTH question rate',
+                    'Ketu Dasha = most SPIRITUAL questions',
+                  ].map((txt) => (
+                    <div
+                      key={txt}
+                      style={{
+                        background: '#16161e',
+                        border: `1px solid ${BORDER}`,
+                        borderRadius: 10,
+                        padding: '12px 14px',
+                        fontSize: 12,
+                        color: '#c8c8d4',
+                      }}
+                    >
+                      {txt}
+                      <div style={{ fontSize: 10, color: '#6a6a7c', marginTop: 8 }}>
+                        Static insight — becomes data-driven when <code style={{ color: '#8a8a9a' }}>dashaAtTime</code>{' '}
+                        populates.
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* SECTION 3 — Emotion × life area */}
+              <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+                <h3 style={{ color: GOLD, fontSize: 15, margin: '0 0 4px' }}>What emotion drives each life question?</h3>
+                <p style={{ color: '#6a6a7c', fontSize: 12, margin: '0 0 12px' }}>
+                  Stacked counts by <code style={{ color: '#8a8a9a' }}>emotionalTone</code> · real data from logs sample
+                </p>
+                <div style={{ height: 300, position: 'relative' }}>
+                  <ChartJsBar
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: { position: 'bottom', labels: { color: '#a8a8b8', font: { size: 9 }, boxWidth: 10 } },
+                      },
+                      scales: {
+                        x: { ...axisCommon, stacked: true },
+                        y: { ...axisCommon, stacked: true, beginAtZero: true },
+                      },
+                    }}
+                    data={{
+                      labels: karmaModel.stackCats,
+                      datasets: karmaModel.stackedToneDatasets,
+                    }}
+                  />
+                </div>
+                <div style={{ marginTop: 14, fontSize: 12, color: '#b0b0be', lineHeight: 1.6 }}>
+                  <div>
+                    <strong style={{ color: '#fda4af' }}>MARRIAGE</strong> questions ={' '}
+                    {karmaModel.marrN > 0 ? (
+                      <>
+                        {karmaModel.marrUrgentDesperatePct.toFixed(0)}% URGENT+DESPERATE in sample
+                        <span style={{ color: '#6a6a7c' }}> · narrative target 67% URGENT tone</span>
+                      </>
+                    ) : (
+                      <>67% URGENT tone (illustrative — no MARRIAGE rows in sample)</>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 6 }}>
+                    <strong style={{ color: '#93c5fd' }}>SPIRITUAL</strong> questions ={' '}
+                    {karmaModel.spirN > 0 ? (
+                      <>
+                        {karmaModel.spirCalmPct.toFixed(0)}% CALM in sample
+                        <span style={{ color: '#6a6a7c' }}> · narrative target 82% CALM tone</span>
+                      </>
+                    ) : (
+                      <>82% CALM tone (illustrative — no SPIRITUAL rows in sample)</>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 6 }}>
+                    <strong style={{ color: '#7dd3fc' }}>CAREER</strong> questions = mix of AMBITION + ANXIETY
+                    {karmaModel.careerN > 0 && (
+                      <span style={{ color: '#6a6a7c' }}>
+                        {' '}
+                        · sample: {karmaModel.careerAmb} AMBITION / {karmaModel.careerAnx} ANXIETY intent tags
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 4 — Session journey */}
+              <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+                <h3 style={{ color: GOLD, fontSize: 15, margin: '0 0 4px' }}>How do life questions evolve in a session?</h3>
+                <p style={{ color: '#6a6a7c', fontSize: 12, margin: '0 0 12px' }}>
+                  First Q category → second Q category → count (sorted by userHash + time; consecutive rows per user)
+                </p>
+                {karmaModel.journeyUseMock && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: '#fbbf24',
+                      marginBottom: 10,
+                      padding: '6px 10px',
+                      background: 'rgba(251,191,36,0.06)',
+                      borderRadius: 8,
+                    }}
+                  >
+                    Sample rows — real transitions appear when users ask multiple distinct categories in sequence.
+                  </div>
+                )}
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: '#16161e' }}>
+                      {['First category', 'Second category', 'Count', 'Source'].map((h) => (
+                        <th
+                          key={h}
+                          style={{
+                            textAlign: 'left',
+                            padding: '10px 12px',
+                            color: '#888',
+                            fontWeight: 600,
+                            borderBottom: `1px solid ${BORDER}`,
+                          }}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {karmaModel.journeyDisplay.map((row, i) => (
+                      <tr key={`${row.from}-${row.to}-${i}`} style={{ borderBottom: `1px solid ${BORDER}` }}>
+                        <td style={{ padding: '10px 12px', color: '#ddd' }}>{row.from}</td>
+                        <td style={{ padding: '10px 12px', color: '#ddd' }}>{row.to}</td>
+                        <td style={{ padding: '10px 12px', color: GOLD, fontWeight: 600 }}>{row.count}</td>
+                        <td style={{ padding: '10px 12px', color: '#6a6a7c', fontSize: 11 }}>
+                          {row.mock ? 'Mock example' : 'Derived from logs'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* SECTION 5 — Age × concern */}
+              <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+                <h3 style={{ color: GOLD, fontSize: 15, margin: '0 0 4px' }}>Life concerns by age group</h3>
+                <p style={{ color: '#6a6a7c', fontSize: 12, margin: '0 0 12px' }}>
+                  Grouped bars: age cohort vs question category
+                </p>
+                {karmaModel.ageUseMock && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: '#fbbf24',
+                      marginBottom: 10,
+                      padding: '6px 10px',
+                      background: 'rgba(251,191,36,0.06)',
+                      borderRadius: 8,
+                    }}
+                  >
+                    Sample — populates with usage: <strong style={{ color: '#fcd34d' }}>ageGroup</strong> not yet in logs;
+                    illustrative distribution only.
+                  </div>
+                )}
+                <div style={{ height: 300, position: 'relative' }}>
+                  <ChartJsBar
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: { position: 'bottom', labels: { color: '#a8a8b8', font: { size: 9 }, boxWidth: 10 } },
+                      },
+                      scales: {
+                        x: { ...axisCommon, stacked: false },
+                        y: { ...axisCommon, beginAtZero: true, stacked: false },
+                      },
+                    }}
+                    data={{
+                      labels: karmaModel.stackCats,
+                      datasets: karmaModel.ageDatasets.map((d) => ({ ...d, borderWidth: 0, borderRadius: 4 })),
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* SECTION 6 — Language × depth */}
+              <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+                <h3 style={{ color: GOLD, fontSize: 15, margin: '0 0 4px' }}>Does language affect emotional openness?</h3>
+                <p style={{ color: '#6a6a7c', fontSize: 12, margin: '0 0 14px' }}>
+                  Hindi vs English — averages from logs sample (other languages excluded from this head-to-head)
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                  {[
+                    {
+                      title: 'Hindi users',
+                      n: karmaModel.hiN,
+                      rows: [
+                        ['Avg session depth', karmaModel.hiAvgDepth.toFixed(2)],
+                        ['% URGENT / DESPERATE', `${(karmaModel.hiUrgentFrac * 100).toFixed(1)}%`],
+                        ['Avg cost (INR)', `₹${karmaModel.hiAvgCost.toFixed(4)}`],
+                      ],
+                    },
+                    {
+                      title: 'English users',
+                      n: karmaModel.enN,
+                      rows: [
+                        ['Avg session depth', karmaModel.enAvgDepth.toFixed(2)],
+                        ['% URGENT / DESPERATE', `${(karmaModel.enUrgentFrac * 100).toFixed(1)}%`],
+                        ['Avg cost (INR)', `₹${karmaModel.enAvgCost.toFixed(4)}`],
+                      ],
+                    },
+                  ].map((col) => (
+                    <div key={col.title} style={{ background: '#16161e', border: `1px solid ${BORDER}`, borderRadius: 10, padding: 14 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: GOLD }}>{col.title}</div>
+                      <div style={{ fontSize: 11, color: '#6a6a7c', marginTop: 4 }}>{col.n} rows in sample</div>
+                      <table style={{ width: '100%', marginTop: 12, fontSize: 12 }}>
+                        <tbody>
+                          {col.rows.map(([k, v]) => (
+                            <tr key={k}>
+                              <td style={{ padding: '6px 0', color: '#9a9aaa' }}>{k}</td>
+                              <td style={{ padding: '6px 0', textAlign: 'right', color: '#e8e8ee', fontWeight: 600 }}>{v}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* SECTION 7 — Timing heatmap */}
+              <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+                <h3 style={{ color: GOLD, fontSize: 15, margin: '0 0 4px' }}>When do people seek cosmic guidance?</h3>
+                <p style={{ color: '#6a6a7c', fontSize: 12, margin: '0 0 12px' }}>
+                  Heatmap: hour of day (0–23) × weekday · intensity = question volume in logs sample
+                </p>
+                <div style={{ fontSize: 12, color: '#b8b8c8', marginBottom: 12, lineHeight: 1.5 }}>
+                  <div>{karmaModel.peakInsight}</div>
+                  <div style={{ marginTop: 6 }}>{karmaModel.lowInsight}</div>
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: `32px repeat(7, minmax(0, 1fr))`,
+                    gap: 3,
+                    fontSize: 10,
+                    alignItems: 'stretch',
+                  }}
+                >
+                  <div />
+                  {WEEKDAY_LABELS.map((d) => (
+                    <div key={d} style={{ textAlign: 'center', color: '#8a8a9a', fontWeight: 600 }}>
+                      {d}
+                    </div>
+                  ))}
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <Fragment key={`heat-row-${h}`}>
+                      <div style={{ color: '#7a7a8c', textAlign: 'right', paddingRight: 4 }}>{h}</div>
+                      {WEEKDAY_LABELS.map((_, wd) => {
+                        const v = karmaModel.heat[h][wd];
+                        const a = v / karmaModel.heatMax;
+                        return (
+                          <div
+                            key={`${h}-${wd}`}
+                            title={`${h}:00 · ${WEEKDAY_LABELS[wd]} · ${v} questions`}
+                            style={{
+                              borderRadius: 3,
+                              minHeight: 16,
+                              background: `rgba(201, 169, 110, ${0.08 + a * 0.92})`,
+                              border: `1px solid rgba(201,169,110,${0.12 + a * 0.35})`,
+                            }}
+                          />
+                        );
+                      })}
+                    </Fragment>
+                  ))}
+                </div>
+              </div>
+
+              {/* SECTION 8 — Buyer intelligence */}
+              <div style={{ marginBottom: 20 }}>
+                <h3 style={{ color: GOLD, fontSize: 15, margin: '0 0 12px' }}>Who would buy this data?</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
+                  {(
+                    [
+                      {
+                        icon: '🎓',
+                        title: 'ACADEMIC RESEARCH',
+                        who: 'IITs, Psychology depts',
+                        val: 'Behavioral patterns linked to verified astrological configurations',
+                        need: 10_000,
+                      },
+                      {
+                        icon: '🏦',
+                        title: 'INSURANCE / FINTECH',
+                        who: 'Life stage prediction',
+                        val: 'When people are in major life transitions (dasha change)',
+                        need: 100_000,
+                      },
+                      {
+                        icon: '🧠',
+                        title: 'MENTAL HEALTH PLATFORMS',
+                        who: 'Anxiety pattern detection',
+                        val: 'Emotional tone + life area + timing',
+                        need: 50_000,
+                      },
+                      {
+                        icon: '🤖',
+                        title: 'LLM TRAINING DATA',
+                        who: 'Vedic reasoning dataset',
+                        val: 'Hinglish Q&A with astrological context',
+                        need: 500_000,
+                      },
+                    ] as const
+                  ).map((card) => {
+                    const pct = Math.min(100, (karmaModel.records / card.need) * 100);
+                    return (
+                      <div
+                        key={card.title}
+                        style={{
+                          background: CARD,
+                          border: `1px solid ${BORDER}`,
+                          borderRadius: 12,
+                          padding: '16px 14px',
+                        }}
+                      >
+                        <div style={{ fontSize: 28, marginBottom: 8 }}>{card.icon}</div>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: GOLD, letterSpacing: 0.5 }}>{card.title}</div>
+                        <div style={{ fontSize: 12, color: '#9a9aaf', marginTop: 6 }}>{card.who}</div>
+                        <div style={{ fontSize: 12, color: '#c8c8d4', marginTop: 10, lineHeight: 1.45 }}>
+                          <span style={{ color: '#7a7a8c' }}>Value: </span>
+                          {card.val}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#6a6a7c', marginTop: 10 }}>
+                          Records needed: {card.need.toLocaleString()}+
+                        </div>
+                        <div style={{ height: 8, background: '#1a1a22', borderRadius: 4, overflow: 'hidden', marginTop: 8 }}>
+                          <div style={{ width: `${pct}%`, height: '100%', background: GOLD }} />
+                        </div>
+                        <div style={{ fontSize: 11, color: '#8a8a9a', marginTop: 6 }}>
+                          {karmaModel.records.toLocaleString()} / {card.need.toLocaleString()} = {pct.toFixed(2)}%
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* SECTION 9 — Completeness tracker */}
+              <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 16 }}>
+                <h3 style={{ color: GOLD, fontSize: 15, margin: '0 0 4px' }}>Dataset quality score</h3>
+                <p style={{ color: '#6a6a7c', fontSize: 12, margin: '0 0 14px' }}>
+                  Sellable fields · filled counts extrapolated from logs sample to DB record total where applicable
+                </p>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 420 }}>
+                    <thead>
+                      <tr style={{ background: '#16161e' }}>
+                        {['Field', 'Filled (est.)', '%', 'Status'].map((h) => (
+                          <th
+                            key={h}
+                            style={{
+                              textAlign: 'left',
+                              padding: '10px 12px',
+                              color: '#888',
+                              borderBottom: `1px solid ${BORDER}`,
+                            }}
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {karmaModel.fieldRows.map((r) => (
+                        <tr key={r.field} style={{ borderBottom: `1px solid ${BORDER}` }}>
+                          <td style={{ padding: '10px 12px', color: '#ddd', fontFamily: 'monospace', fontSize: 11 }}>{r.field}</td>
+                          <td style={{ padding: '10px 12px', color: '#ccc' }}>{r.filled}</td>
+                          <td style={{ padding: '10px 12px', color: GOLD, fontWeight: 600 }}>{r.pct.toFixed(1)}%</td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <span
+                              style={{
+                                color:
+                                  r.status === 'ready' ? '#4ade80' : r.status === 'building' ? '#fbbf24' : '#94a3b8',
+                              }}
+                            >
+                              {r.status === 'ready' ? '✅ Ready' : r.status === 'building' ? '🔄 Building' : '⏳ Pending'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div
+                  style={{
+                    marginTop: 18,
+                    paddingTop: 14,
+                    borderTop: `1px solid ${BORDER}`,
+                    fontSize: 13,
+                    color: '#c8c8d4',
+                    lineHeight: 1.65,
+                  }}
+                >
+                  <div>
+                    Overall dataset value score:{' '}
+                    <strong style={{ color: GOLD }}>Current: {karmaModel.overallCompletenessPct}% complete</strong>
+                  </div>
+                  <div style={{ color: '#9a9aaf', marginTop: 6 }}>At 50%: Dataset licensing possible</div>
+                  <div style={{ color: '#9a9aaf' }}>At 80%: Premium pricing unlocked</div>
                 </div>
               </div>
             </>
