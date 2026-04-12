@@ -287,7 +287,7 @@ export class GeminiService {
       const data = await res.json();
       let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
       text = this.truncatePreservingSugg(text, String(message || ''));
-      const MAX_OUTPUT = 2400; // ~400 words
+      const MAX_OUTPUT = 3200; // ~400 words
       if (text && text.length > MAX_OUTPUT) {
         text = this.capChatOutputAtMaxChars(text, MAX_OUTPUT);
       }
