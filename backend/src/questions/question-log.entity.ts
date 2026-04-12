@@ -38,7 +38,7 @@ export class QuestionLog {
   @Column({ nullable: true })
   questionIntent: string;
 
-  /** URGENT|CALM|DESPERATE|HOPEFUL|CONFUSED|FEARFUL */
+  /** URGENT|CALM|DESPERATE|HOPEFUL|CONFUSED|NEUTRAL|FEARFUL */
   @Column({ nullable: true })
   emotionalTone: string;
 
