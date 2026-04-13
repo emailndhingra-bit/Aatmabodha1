@@ -4,6 +4,8 @@ import { Send, Sparkles, User, Bot, Loader2, BrainCircuit, Copy, Check, X, Globe
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { generateCosmicImage, generateCompactOneLiner, getExtraContext } from '../services/geminiService';
+import { getOracleShareDashaLine } from '../services/oracleShareUtils';
+import OracleShareModal from './OracleShareModal';
 import { processFileContent, processZipFile } from '../services/fileProcessor';
 import { jsPDF } from "jspdf";
 
@@ -355,9 +357,10 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
   const [suggestedFollowUps, setSuggestedFollowUps] = useState<string[]>([]);
 
   // Modals
-  const [shareModal, setShareModal] = useState<ShareState | null>(null);
+  const [oracleShareText, setOracleShareText] = useState<string | null>(null);
   const [copyModal, setCopyModal] = useState<ShareState | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [shareToast, setShareToast] = useState<string | null>(null);
   
   // PDF Selection State
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
@@ -1131,6 +1134,12 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
   };
 
   const openCopyModal = (answer: string, question?: string) => { setCopyModal({ isOpen: true, answer, question }); setCopySuccess(false); };
+
+  const openOracleShare = (answer: string) => setOracleShareText(answer);
+  const showShareToast = (msg: string) => {
+    setShareToast(msg);
+    window.setTimeout(() => setShareToast(null), 2600);
+  };
   
   const handleDetailedCopy = async () => {
      if(!copyModal) return;
@@ -1395,9 +1404,24 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
               <div className={`max-w-[90%] md:max-w-[85%] rounded-2xl p-5 text-sm leading-relaxed shadow-lg relative group/bubble
                 ${msg.role === 'user' 
                   ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-tr-none border border-indigo-500/50' 
-                  : 'bg-[#15122b] text-indigo-100 rounded-tl-none border border-amber-900/20'
+                  : 'bg-[#15122b] text-indigo-100 rounded-tl-none border border-amber-900/20 pr-14 sm:pr-16'
                 }
               `}>
+                {msg.role === 'model' && (
+                  <button
+                    type="button"
+                    onClick={() => openOracleShare(msg.text)}
+                    className="absolute right-3 top-3 z-10 rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide opacity-0 shadow-[0_0_12px_rgba(201,169,110,0.15)] transition-all duration-200 group-hover/bubble:opacity-100 group-hover/bubble:shadow-[0_0_22px_rgba(201,169,110,0.38)]"
+                    style={{
+                      borderColor: "rgba(201, 169, 110, 0.45)",
+                      color: "#c9a96e",
+                      background: "linear-gradient(180deg, rgba(26,26,46,0.95), rgba(10,10,15,0.92))",
+                    }}
+                    title="Share this insight"
+                  >
+                    <span className="drop-shadow-sm">📸</span> Share
+                  </button>
+                )}
                 <div className="markdown-body font-sans">
                     <ReactMarkdown 
                         remarkPlugins={[remarkGfm]}
@@ -1580,6 +1604,26 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
         </div>
       </div>
       
+      {oracleShareText !== null && (
+        <OracleShareModal
+          open
+          onClose={() => setOracleShareText(null)}
+          rawMarkdown={oracleShareText}
+          userName={(userName || "").trim() || "Seeker"}
+          dashaLine={db ? getOracleShareDashaLine(db) : "Current Dasha"}
+          onToast={showShareToast}
+        />
+      )}
+
+      {shareToast && (
+        <div
+          className="pointer-events-none fixed bottom-6 left-1/2 z-[220] max-w-[90vw] -translate-x-1/2 rounded-full border border-amber-500/40 bg-[#1a1638]/95 px-5 py-2.5 text-sm font-medium text-amber-50 shadow-[0_0_24px_rgba(201,169,110,0.25)] backdrop-blur-md"
+          role="status"
+        >
+          {shareToast}
+        </div>
+      )}
+
       {/* Copy/Share Modal (Simplified for this file) */}
       {(copyModal) && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
