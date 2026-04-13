@@ -1,10 +1,35 @@
-import { Controller, Get, Post, Delete, Body, Param, UseGuards, Req, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Req,
+  BadRequestException,
+  Query,
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminGuard } from '../guards/admin.guard';
 import { ProfilesService } from './profiles.service';
 
 @Controller('profiles')
 export class ProfilesController {
   constructor(private profilesService: ProfilesService) {}
+
+  @Get('admin/counts')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async adminProfileCounts() {
+    return this.profilesService.countProfilesByUser();
+  }
+
+  @Get('admin')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async adminListProfiles(@Query('userId') userId: string) {
+    if (!userId) throw new BadRequestException('userId query parameter is required');
+    return this.profilesService.getUserProfiles(userId);
+  }
 
   @Get()
   @UseGuards(JwtAuthGuard)

@@ -52,7 +52,20 @@ const APP_BACKEND_BASE =
   (typeof import.meta !== 'undefined' &&
     (import.meta as ImportMeta & { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL) ||
   'https://aatmabodha1-backend.onrender.com';
-const ADMIN_PANEL_EMAIL = 'emailndhingra@gmail.com';
+const DEFAULT_ADMIN_EMAILS = 'emailndhingra@gmail.com,amol.xlri@gmail.com';
+
+function isAppAdminEmail(email: string | undefined | null): boolean {
+  if (!email) return false;
+  const raw =
+    (typeof import.meta !== 'undefined' &&
+      (import.meta as ImportMeta & { env?: { VITE_ADMIN_EMAILS?: string } }).env?.VITE_ADMIN_EMAILS) ||
+    DEFAULT_ADMIN_EMAILS;
+  return raw
+    .split(',')
+    .map((e) => e.trim())
+    .filter(Boolean)
+    .includes(email.trim());
+}
 
 const App: React.FC = () => {
   const path = window.location.pathname;
@@ -990,14 +1003,14 @@ const App: React.FC = () => {
       }
     };
 
-    const loadCachedChart = async () => {
+    const loadCachedChart = async (): Promise<any | null> => {
       try {
         const cached = localStorage.getItem('vedicAstroData');
         const cachedLoc = localStorage.getItem('vedicUserLocation');
         let latCached: number | undefined;
         let lngCached: number | undefined;
         if (cachedLoc && cachedLoc.includes(',')) {
-          const [la, ln] = cachedLoc.split(',').map(s => parseFloat(s.trim()));
+          const [la, ln] = cachedLoc.split(',').map((s) => parseFloat(s.trim()));
           if (!isNaN(la) && !isNaN(ln)) {
             latCached = la;
             lngCached = ln;
@@ -1007,13 +1020,32 @@ const App: React.FC = () => {
           console.log('Found cached cosmic data, re-hydrating...');
           const parsedData = JSON.parse(cached);
           setData(parsedData);
+          try {
+            const ap = JSON.parse(localStorage.getItem('adminActiveProfile') || 'null');
+            if (ap?.profileName) setUserName(ap.profileName);
+          } catch {
+            /* ignore */
+          }
+          const b64 = localStorage.getItem('activeOracleDB');
+          const w = window as unknown as { initSqlJs?: (opts: { locateFile: (f: string) => string }) => Promise<any> };
+          if (b64 && w.initSqlJs) {
+            const SQL = await w.initSqlJs({
+              locateFile: (file: string) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`,
+            });
+            const raw = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+            const db = new SQL.Database(raw);
+            setDbInstance(db);
+            return db;
+          }
           const db = await initDatabase(parsedData, latCached, lngCached);
           setDbInstance(db);
+          return db;
         }
       } catch (e) {
         console.error('Failed to load cached chart', e);
         localStorage.removeItem('vedicAstroData');
       }
+      return null;
     };
 
     const bootstrapFromServerProfile = async (): Promise<any | null> => {
@@ -1072,6 +1104,20 @@ const App: React.FC = () => {
       if (cancelled) return;
       loadCachedUserPrefs();
       if (cancelled) return;
+
+      const adminAct = localStorage.getItem('adminActiveProfile');
+      const hasVedic = !!localStorage.getItem('vedicAstroData');
+      if (adminAct && hasVedic) {
+        const dbAdmin = await loadCachedChart();
+        if (cancelled) return;
+        if (dbAdmin) {
+          const lang = localStorage.getItem('vedicLanguage') || 'English';
+          setLanguage(lang);
+          await initChatSession(lang, dbAdmin);
+        }
+        return;
+      }
+
       const dbFromProfile = await bootstrapFromServerProfile();
       if (cancelled) return;
       if (dbFromProfile) {
@@ -1080,7 +1126,13 @@ const App: React.FC = () => {
         await initChatSession(lang, dbFromProfile);
         return;
       }
-      await loadCachedChart();
+      const dbCached = await loadCachedChart();
+      if (cancelled) return;
+      if (dbCached) {
+        const lang = localStorage.getItem('vedicLanguage') || 'English';
+        setLanguage(lang);
+        await initChatSession(lang, dbCached);
+      }
     })();
 
     return () => {
@@ -1109,7 +1161,7 @@ const App: React.FC = () => {
       return null;
     }
   }, [authUserTick]);
-  const isAdmin = currentUser?.email === ADMIN_PANEL_EMAIL;
+  const isAdmin = isAppAdminEmail(currentUser?.email);
 
   return (
     <div className="min-h-screen bg-[#0B0c15] text-amber-50 font-serif selection:bg-amber-900/50 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]">

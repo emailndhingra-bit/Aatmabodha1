@@ -34,4 +34,19 @@ export class ProfilesService {
   async getProfile(userId: string, profileId: string): Promise<Profile> {
     return this.profilesRepository.findOne({ where: { id: profileId, userId } });
   }
+
+  /** Admin: profile counts keyed by userId */
+  async countProfilesByUser(): Promise<Record<string, number>> {
+    const rows = await this.profilesRepository
+      .createQueryBuilder('p')
+      .select('p.userId', 'userId')
+      .addSelect('COUNT(p.id)', 'cnt')
+      .groupBy('p.userId')
+      .getRawMany();
+    const out: Record<string, number> = {};
+    for (const r of rows) {
+      out[r.userId] = parseInt(String(r.cnt), 10) || 0;
+    }
+    return out;
+  }
 }

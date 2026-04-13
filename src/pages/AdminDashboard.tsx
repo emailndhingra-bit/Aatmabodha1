@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, Fragment } from 'react';
+import { fetchAnalysisForProfile } from '../../services/chartFromProfile';
 import {
   Chart as ChartJS,
   ArcElement,
@@ -37,6 +38,33 @@ ChartJS.register(
 );
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://aatmabodha1-backend.onrender.com';
+
+const LS_ADMIN_ACTIVE_PROFILE = 'adminActiveProfile';
+const LS_ADMIN_PROFILE_DIRECTORY = 'adminProfileDirectory';
+const LS_ACTIVE_ORACLE_DB = 'activeOracleDB';
+
+function uint8ToBase64(u8: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < u8.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, Array.from(u8.subarray(i, i + chunk)) as unknown as number[]);
+  }
+  return btoa(binary);
+}
+
+function readAdminDirectory(): any[] {
+  try {
+    const raw = localStorage.getItem(LS_ADMIN_PROFILE_DIRECTORY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeAdminDirectory(entries: any[]) {
+  localStorage.setItem(LS_ADMIN_PROFILE_DIRECTORY, JSON.stringify(entries));
+}
 
 const USD_TO_INR = 92.47;
 const GOLD = '#c9a96e';
@@ -847,6 +875,11 @@ export default function AdminDashboard() {
   const [mcPreview, setMcPreview] = useState<{ type: MySavedChartType; data: any; options: any } | null>(null);
   const [mcEdit, setMcEdit] = useState<{ id: string; chartName: string; description: string } | null>(null);
 
+  const [profileCounts, setProfileCounts] = useState<Record<string, number>>({});
+  const [profileModal, setProfileModal] = useState<null | { user: any; loading: boolean; profiles: any[] }>(null);
+  const [adminProfileUiTick, setAdminProfileUiTick] = useState(0);
+  const [myProfiles, setMyProfiles] = useState<any[]>([]);
+
   const token = localStorage.getItem('auth_token');
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
@@ -915,6 +948,23 @@ export default function AdminDashboard() {
     if (tab !== 'mycharts' || !token) return;
     void fetchSavedCharts();
   }, [tab, token, fetchSavedCharts]);
+
+  useEffect(() => {
+    if (!token) return;
+    void (async () => {
+      const r = await fetch(`${BACKEND}/api/profiles`, { headers });
+      if (r.ok) setMyProfiles(await r.json());
+      else setMyProfiles([]);
+    })();
+  }, [token]);
+
+  useEffect(() => {
+    if (tab !== 'users' || !token) return;
+    void (async () => {
+      const r = await fetch(`${BACKEND}/api/profiles/admin/counts`, { headers });
+      if (r.ok) setProfileCounts(await r.json());
+    })();
+  }, [tab, token]);
 
   useEffect(() => {
     if (tab !== 'questions') return;
@@ -1088,13 +1138,231 @@ export default function AdminDashboard() {
     }
   }, [token, mcEdit, fetchSavedCharts]);
 
+  const adminActiveParsed = useMemo(() => {
+    try {
+      const raw = localStorage.getItem(LS_ADMIN_ACTIVE_PROFILE);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }, [adminProfileUiTick]);
+
+  const mergedProfileChoices = useMemo(() => {
+    let auth: any = null;
+    try {
+      auth = JSON.parse(localStorage.getItem('auth_user') || 'null');
+    } catch {
+      auth = null;
+    }
+    const rows: { key: string; label: string; owner: any; profile: any }[] = [];
+    for (const p of myProfiles || []) {
+      rows.push({
+        key: `mine-${p.id}`,
+        label: `${p.name || 'Profile'} (you)`,
+        owner: auth,
+        profile: p,
+      });
+    }
+    for (const e of readAdminDirectory()) {
+      if (!e?.profileId) continue;
+      rows.push({
+        key: `dir-${e.profileId}`,
+        label: `${e.profileName || 'Profile'} · ${e.userEmail || e.userId || 'user'}`,
+        owner: { id: e.userId, email: e.userEmail },
+        profile: e.profile || {
+          id: e.profileId,
+          name: e.profileName,
+          dateOfBirth: e.dateOfBirth,
+          timeOfBirth: e.timeOfBirth,
+          placeOfBirth: e.placeOfBirth,
+          latitude: e.latitude,
+          longitude: e.longitude,
+          timezone: e.timezone,
+          gender: e.gender,
+        },
+      });
+    }
+    const seen = new Set<string>();
+    return rows.filter((r) => {
+      if (seen.has(r.key)) return false;
+      seen.add(r.key);
+      return true;
+    });
+  }, [myProfiles, adminProfileUiTick]);
+
+  const applyOracleFromProfile = useCallback(
+    async (ownerUser: any, profile: any, opts: { redirect: boolean }) => {
+      if (!token) return;
+      setMsg('Generating chart…');
+      try {
+        const analysis = await fetchAnalysisForProfile({
+          name: profile.name,
+          gender: profile.gender,
+          dateOfBirth: profile.dateOfBirth,
+          timeOfBirth: profile.timeOfBirth,
+          placeOfBirth: profile.placeOfBirth,
+          latitude: profile.latitude,
+          longitude: profile.longitude,
+          timezone: profile.timezone,
+        });
+        const lat = profile.latitude != null && profile.latitude !== '' ? Number(profile.latitude) : Number.NaN;
+        const lng = profile.longitude != null && profile.longitude !== '' ? Number(profile.longitude) : Number.NaN;
+        if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+          localStorage.setItem('vedicUserLocation', `${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+        }
+        const tzNum =
+          profile.timezone != null && profile.timezone !== '' ? parseFloat(String(profile.timezone)) : Number.NaN;
+        if (Number.isFinite(tzNum)) {
+          localStorage.setItem('vedicUserTimezone', String(tzNum));
+        }
+        try {
+          localStorage.setItem('vedicAstroData', JSON.stringify(analysis));
+        } catch {
+          setMsg('Chart JSON too large for this browser storage.');
+          setTimeout(() => setMsg(''), 5000);
+          return;
+        }
+        const { initDatabase } = await import('../../services/db');
+        const db = await initDatabase(
+          analysis,
+          Number.isFinite(lat) ? lat : undefined,
+          Number.isFinite(lng) ? lng : undefined,
+        );
+        if (db && typeof (db as any).export === 'function') {
+          localStorage.setItem(LS_ACTIVE_ORACLE_DB, uint8ToBase64((db as any).export()));
+        } else {
+          localStorage.removeItem(LS_ACTIVE_ORACLE_DB);
+        }
+        const entry = {
+          userId: ownerUser?.id,
+          profileId: profile.id,
+          profileName: profile.name || 'Profile',
+          userEmail: ownerUser?.email,
+          profile: { ...profile },
+          dbData: analysis,
+        };
+        localStorage.setItem(LS_ADMIN_ACTIVE_PROFILE, JSON.stringify(entry));
+        const dir = readAdminDirectory().filter((e: any) => e.profileId !== profile.id);
+        dir.push(entry);
+        writeAdminDirectory(dir);
+        setAdminProfileUiTick((t) => t + 1);
+        setMsg(opts.redirect ? 'Opening oracle…' : 'Oracle chart saved locally for this profile.');
+        setTimeout(() => setMsg(''), 2500);
+        if (opts.redirect) {
+          window.location.href = '/';
+        }
+      } catch (e: unknown) {
+        const err = e as { message?: string };
+        setMsg(err?.message || 'Failed to build chart');
+        setTimeout(() => setMsg(''), 5000);
+      }
+    },
+    [token],
+  );
+
+  const openProfilesForUser = useCallback(
+    async (user: any) => {
+      if (!token) return;
+      setProfileModal({ user, loading: true, profiles: [] });
+      try {
+        const r = await fetch(`${BACKEND}/api/profiles/admin?userId=${encodeURIComponent(user.id)}`, { headers });
+        if (!r.ok) {
+          setProfileModal({ user, loading: false, profiles: [] });
+          setMsg('Could not load profiles (admin only).');
+          setTimeout(() => setMsg(''), 4000);
+          return;
+        }
+        const list = await r.json();
+        setProfileModal({ user, loading: false, profiles: Array.isArray(list) ? list : [] });
+      } catch {
+        setProfileModal({ user, loading: false, profiles: [] });
+      }
+    },
+    [token],
+  );
+
   if (loading) return <div style={{ padding: 40, color: '#ccc', background: '#0d0d1a', minHeight: '100vh' }}>Loading admin data...</div>;
 
   return (
     <div style={{ background: '#0d0d1a', minHeight: '100vh', padding: '24px', fontFamily: 'system-ui, sans-serif' }}>
-      <h1 style={{ color: '#c9a84c', fontSize: 20, fontWeight: 600, marginBottom: 24, letterSpacing: 2, textTransform: 'uppercase' }}>
-        Admin Dashboard
-      </h1>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 16,
+          marginBottom: 20,
+        }}
+      >
+        <h1
+          style={{
+            color: '#c9a84c',
+            fontSize: 20,
+            fontWeight: 600,
+            margin: 0,
+            letterSpacing: 2,
+            textTransform: 'uppercase',
+          }}
+        >
+          Admin Dashboard
+        </h1>
+        <div
+          style={{
+            background: '#1a1a2e',
+            border: '1px solid #2a2a4a',
+            borderRadius: 10,
+            padding: '10px 14px',
+            minWidth: 260,
+            maxWidth: 420,
+          }}
+        >
+          <div style={{ fontSize: 10, color: '#6a6a7c', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
+            Oracle profile (local)
+          </div>
+          <div style={{ fontSize: 13, color: '#e8e8ee', fontWeight: 600, marginBottom: 8 }}>
+            {adminActiveParsed?.profileName || '— none selected —'}
+          </div>
+          <select
+            value={adminActiveParsed?.profileId || ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) return;
+              if (v === '__clear__') {
+                localStorage.removeItem(LS_ADMIN_ACTIVE_PROFILE);
+                localStorage.removeItem(LS_ACTIVE_ORACLE_DB);
+                setAdminProfileUiTick((t) => t + 1);
+                return;
+              }
+              const row = mergedProfileChoices.find((x) => x.profile?.id === v);
+              if (!row?.profile) return;
+              void applyOracleFromProfile(row.owner || { id: row.profile.userId }, row.profile, { redirect: true });
+            }}
+            style={{
+              width: '100%',
+              background: '#12121a',
+              color: '#ddd',
+              border: '1px solid #2a2a38',
+              borderRadius: 8,
+              padding: '8px 10px',
+              fontSize: 12,
+              marginBottom: 8,
+            }}
+          >
+            <option value="">— Open Oracle as profile —</option>
+            {mergedProfileChoices.map((r) => (
+              <option key={r.key} value={r.profile?.id || r.key}>
+                {r.label}
+              </option>
+            ))}
+            <option value="__clear__">Clear admin target (keys only)</option>
+          </select>
+          <div style={{ fontSize: 10, color: '#5a5a6c', lineHeight: 1.4 }}>
+            Your saved profiles + any user you load from the Users tab. Selecting runs chart API and sends you to the main
+            Oracle (/) with <code style={{ color: '#7a7a8c' }}>adminActiveProfile</code> + <code style={{ color: '#7a7a8c' }}>activeOracleDB</code>.
+          </div>
+        </div>
+      </div>
 
       {msg && (
         <div style={{ background: '#1a3a1a', color: '#7bed9f', padding: '10px 16px', borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
@@ -1160,7 +1428,7 @@ export default function AdminDashboard() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#1a1a2e' }}>
-                {['Name', 'Email', 'Status', 'Questions', 'Actions'].map(h => (
+                {['Name', 'Email', 'Status', 'Profiles', 'Questions', 'Actions'].map((h) => (
                   <th key={h} style={{ padding: '12px 14px', textAlign: 'left', color: '#888', fontWeight: 500, borderBottom: '1px solid #2a2a4a' }}>{h}</th>
                 ))}
               </tr>
@@ -1176,9 +1444,58 @@ export default function AdminDashboard() {
                       padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600
                     }}>{u.status}</span>
                   </td>
+                  <td style={{ padding: '12px 14px' }}>
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        minWidth: 28,
+                        textAlign: 'center',
+                        background: '#2a2540',
+                        color: GOLD,
+                        borderRadius: 8,
+                        padding: '4px 8px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {profileCounts[u.id] ?? '—'}
+                    </span>
+                  </td>
                   <td style={{ padding: '12px 14px', color: '#ddd' }}>{u.questionsUsed ?? 0}/{u.questionsLimit ?? 60}</td>
                   <td style={{ padding: '12px 14px' }}>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => void openProfilesForUser(u)}
+                        style={{
+                          background: '#1a1a3e',
+                          color: GOLD,
+                          border: '1px solid #2a2a4a',
+                          borderRadius: 6,
+                          padding: '5px 10px',
+                          cursor: 'pointer',
+                          fontSize: 11,
+                          fontWeight: 600,
+                        }}
+                      >
+                        View Profiles
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void openProfilesForUser(u)}
+                        style={{
+                          background: '#2a2540',
+                          color: '#c4b5fd',
+                          border: '1px solid #4c3f6b',
+                          borderRadius: 6,
+                          padding: '5px 10px',
+                          cursor: 'pointer',
+                          fontSize: 11,
+                          fontWeight: 600,
+                        }}
+                      >
+                        Switch Profile
+                      </button>
                       {u.status !== 'approved' && (
                         <button onClick={() => act(u.id, 'approve')} style={{ background: '#1a4a2a', color: '#7bed9f', border: 'none', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontSize: 12 }}>
                           Approve
@@ -2878,6 +3195,120 @@ export default function AdminDashboard() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {profileModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            zIndex: 60,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+          onClick={() => !profileModal.loading && setProfileModal(null)}
+        >
+          <div
+            style={{
+              background: CARD,
+              border: `1px solid ${BORDER}`,
+              borderRadius: 12,
+              maxWidth: 640,
+              width: '100%',
+              maxHeight: '90vh',
+              overflow: 'auto',
+              padding: 20,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 16, fontWeight: 700, color: GOLD, marginBottom: 6 }}>Profiles</div>
+            <div style={{ fontSize: 12, color: '#8a8a9a', marginBottom: 14 }}>
+              {profileModal.user?.email} · GET /api/profiles/admin?userId=
+              {profileModal.user?.id}
+            </div>
+            {profileModal.loading ? (
+              <div style={{ color: '#888', padding: 24 }}>Loading profiles…</div>
+            ) : profileModal.profiles.length === 0 ? (
+              <div style={{ color: '#666', fontSize: 13 }}>No profiles for this user.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#16161e' }}>
+                    {['Name', 'DOB', 'Actions'].map((h) => (
+                      <th key={h} style={{ textAlign: 'left', padding: '8px 10px', color: '#888', borderBottom: `1px solid ${BORDER}` }}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {profileModal.profiles.map((p: any) => (
+                    <tr key={p.id} style={{ borderBottom: `1px solid ${BORDER}` }}>
+                      <td style={{ padding: '10px 10px', color: '#eee' }}>{p.name || '—'}</td>
+                      <td style={{ padding: '10px 10px', color: '#aaa', fontSize: 12 }}>{p.dateOfBirth || '—'}</td>
+                      <td style={{ padding: '10px 10px' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => void applyOracleFromProfile(profileModal.user, p, { redirect: false })}
+                            style={{
+                              background: '#2a2540',
+                              color: '#c4b5fd',
+                              border: '1px solid #4c3f6b',
+                              borderRadius: 6,
+                              padding: '6px 10px',
+                              cursor: 'pointer',
+                              fontSize: 11,
+                              fontWeight: 600,
+                            }}
+                          >
+                            Switch profile
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void applyOracleFromProfile(profileModal.user, p, { redirect: true })}
+                            style={{
+                              background: GOLD,
+                              color: '#111',
+                              border: 'none',
+                              borderRadius: 6,
+                              padding: '6px 10px',
+                              cursor: 'pointer',
+                              fontSize: 11,
+                              fontWeight: 700,
+                            }}
+                          >
+                            Load in Oracle
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+              <button
+                type="button"
+                disabled={profileModal.loading}
+                onClick={() => setProfileModal(null)}
+                style={{
+                  background: 'transparent',
+                  color: '#aaa',
+                  border: `1px solid ${BORDER}`,
+                  borderRadius: 8,
+                  padding: '8px 16px',
+                  cursor: profileModal.loading ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
