@@ -2,6 +2,7 @@ import React, { useCallback, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import { X } from "lucide-react";
 import OracleShareCard from "./OracleShareCard";
+import OracleQuoteShareCard, { type QuoteAspect } from "./OracleQuoteShareCard";
 import { oracleTextForShare, shareImageFileName } from "../services/oracleShareUtils";
 
 const SHARE_SITE = "https://aatmabodha.com";
@@ -13,6 +14,8 @@ export type OracleShareModalProps = {
   userName: string;
   dashaLine: string;
   onToast: (message: string) => void;
+  /** Full oracle reply card vs Instagram-style quote card */
+  variant?: "full" | "quote";
 };
 
 const OracleShareModal: React.FC<OracleShareModalProps> = ({
@@ -22,9 +25,11 @@ const OracleShareModal: React.FC<OracleShareModalProps> = ({
   userName,
   dashaLine,
   onToast,
+  variant = "full",
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const [generating, setGenerating] = useState(false);
+  const [quoteAspect, setQuoteAspect] = useState<QuoteAspect>("1:1");
 
   const plain = oracleTextForShare(rawMarkdown);
   const dateLabel = new Date().toLocaleDateString(undefined, {
@@ -119,9 +124,12 @@ const OracleShareModal: React.FC<OracleShareModalProps> = ({
 
   const tweetUrl = () => {
     const url = typeof window !== "undefined" ? window.location.href : SHARE_SITE;
-    const snippet = plain.slice(0, 220).replace(/\s+/g, " ");
-    const text = `${snippet}${plain.length > 220 ? "…" : ""}\n\n${url}`;
-    return `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+    const snippet = plain.slice(0, 200).replace(/\s+/g, " ");
+    const quoted =
+      variant === "quote"
+        ? `“${snippet}${plain.length > 200 ? "…" : ""}” — Aatmabodha\n\n${url}`
+        : `${snippet}${plain.length > 200 ? "…" : ""}\n\n${url}`;
+    return `https://twitter.com/intent/tweet?text=${encodeURIComponent(quoted)}`;
   };
 
   const whatsappUrl = () => {
@@ -131,6 +139,12 @@ const OracleShareModal: React.FC<OracleShareModalProps> = ({
   };
 
   if (!open) return null;
+
+  const aspectButtons: { id: QuoteAspect; label: string; hint: string }[] = [
+    { id: "1:1", label: "Square (1:1)", hint: "Instagram feed" },
+    { id: "9:16", label: "Story (9:16)", hint: "Stories / WhatsApp" },
+    { id: "16:9", label: "Wide (16:9)", hint: "Twitter / LinkedIn" },
+  ];
 
   return (
     <div
@@ -149,9 +163,11 @@ const OracleShareModal: React.FC<OracleShareModalProps> = ({
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h2 id="oracle-share-title" className="font-serif text-lg font-bold tracking-wide text-amber-100">
-              Share insight
+              {variant === "quote" ? "Share quote" : "Share insight"}
             </h2>
-            <p className="mt-0.5 text-xs text-indigo-300/80">Luxury card · image · social</p>
+            <p className="mt-0.5 text-xs text-indigo-300/80">
+              {variant === "quote" ? "Quote card · pick aspect · export" : "Luxury card · image · social"}
+            </p>
           </div>
           <button
             type="button"
@@ -162,18 +178,50 @@ const OracleShareModal: React.FC<OracleShareModalProps> = ({
           </button>
         </div>
 
-        <div className="relative mx-auto flex max-w-[400px] justify-center">
+        {variant === "quote" && (
+          <div className="mb-4 flex flex-wrap gap-2">
+            {aspectButtons.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => setQuoteAspect(b.id)}
+                title={b.hint}
+                className={`rounded-full border px-3 py-1.5 text-left text-[11px] font-semibold transition-all ${
+                  quoteAspect === b.id
+                    ? "border-amber-400/70 bg-amber-900/30 text-amber-100 shadow-[0_0_14px_rgba(201,169,110,0.25)]"
+                    : "border-indigo-700/40 bg-[#15122b] text-indigo-200 hover:border-amber-500/40"
+                }`}
+              >
+                <span className="mr-1">{b.id === "1:1" ? "📱" : b.id === "9:16" ? "📱" : "🖥️"}</span>
+                {b.label}
+                <span className="mt-0.5 block text-[9px] font-normal opacity-70">{b.hint}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="relative mx-auto flex max-h-[min(70vh,720px)] justify-center overflow-auto">
           <div
             className={`relative rounded-2xl ${generating ? "oracle-share-shimmer" : ""}`}
             style={{ boxShadow: "0 0 0 1px rgba(201,169,110,0.15)" }}
           >
-            <OracleShareCard
-              ref={cardRef}
-              userName={userName}
-              dashaLine={dashaLine}
-              bodyText={plain}
-              dateLabel={dateLabel}
-            />
+            {variant === "quote" ? (
+              <OracleQuoteShareCard
+                ref={cardRef}
+                userName={userName}
+                dashaLine={dashaLine}
+                quoteText={plain}
+                aspect={quoteAspect}
+              />
+            ) : (
+              <OracleShareCard
+                ref={cardRef}
+                userName={userName}
+                dashaLine={dashaLine}
+                bodyText={plain}
+                dateLabel={dateLabel}
+              />
+            )}
             {generating && (
               <div className="absolute inset-0 flex flex-col items-center justify-center rounded-2xl bg-[#0a0a0f]/75 backdrop-blur-[2px]">
                 <p className="animate-pulse px-6 text-center font-serif text-sm italic text-amber-200/95">

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Sparkles, User, Bot, Loader2, BrainCircuit, Copy, Check, X, Globe, ClipboardCopy, Image as ImageIcon, Eye, Network, Heart, Download, Wand2, Compass, ArrowRight, GitBranch, Lightbulb, Clock, TrendingUp, AlertOctagon, Fingerprint, Users, FileDown, Square, CheckSquare, Crown, Paperclip, FileText, Mic, MicOff, AlertTriangle, Share2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -43,6 +43,10 @@ interface QAPair {
     answer: Message;
     id: number;
 }
+
+type OracleShareOpen = { markdown: string; quoteOnly: boolean };
+
+type SelectionToolbarState = { text: string; x: number; y: number } | null;
 
 // --- COSMIC LOADING MESSAGES (GLORIFIED RISHI SCIENCE) ---
 const COSMIC_LOADING_MESSAGES = [
@@ -357,7 +361,8 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
   const [suggestedFollowUps, setSuggestedFollowUps] = useState<string[]>([]);
 
   // Modals
-  const [oracleShareText, setOracleShareText] = useState<string | null>(null);
+  const [oracleShare, setOracleShare] = useState<OracleShareOpen | null>(null);
+  const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbarState>(null);
   const [copyModal, setCopyModal] = useState<ShareState | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
   const [shareToast, setShareToast] = useState<string | null>(null);
@@ -376,6 +381,8 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const setupWizardCompleteRef = useRef(setupWizardComplete);
+  setupWizardCompleteRef.current = setupWizardComplete;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1135,11 +1142,105 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
 
   const openCopyModal = (answer: string, question?: string) => { setCopyModal({ isOpen: true, answer, question }); setCopySuccess(false); };
 
-  const openOracleShare = (answer: string) => setOracleShareText(answer);
+  const openOracleShare = (answer: string) => {
+    setSelectionToolbar(null);
+    setOracleShare({ markdown: answer, quoteOnly: false });
+  };
+
+  const openOracleShareQuote = (snippet: string) => {
+    setSelectionToolbar(null);
+    try {
+      window.getSelection()?.removeAllRanges();
+    } catch {
+      /* ignore */
+    }
+    setOracleShare({ markdown: snippet, quoteOnly: true });
+  };
+
   const showShareToast = (msg: string) => {
     setShareToast(msg);
     window.setTimeout(() => setShareToast(null), 2600);
   };
+
+  const copySelectionSnippet = async (t: string) => {
+    try {
+      await navigator.clipboard.writeText(t);
+      showShareToast("Copied to clipboard ✅");
+    } catch {
+      showShareToast("Copy failed — try another browser");
+    }
+    try {
+      window.getSelection()?.removeAllRanges();
+    } catch {
+      /* ignore */
+    }
+    setSelectionToolbar(null);
+  };
+
+  const handleTextSelectionEnd = useCallback(() => {
+    if (!setupWizardCompleteRef.current) {
+      setSelectionToolbar(null);
+      return;
+    }
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === "TEXTAREA" || ae.tagName === "INPUT")) return;
+
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+      setSelectionToolbar(null);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const rootN = range.commonAncestorContainer;
+    const el = rootN.nodeType === Node.TEXT_NODE ? rootN.parentElement : (rootN as Element);
+    if (!el?.closest?.('[data-oracle-bubble="model"]')) {
+      setSelectionToolbar(null);
+      return;
+    }
+    const selectedText = sel.toString().trim();
+    if (selectedText.length < 10) {
+      setSelectionToolbar(null);
+      return;
+    }
+    const rect = range.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) {
+      setSelectionToolbar(null);
+      return;
+    }
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      try {
+        navigator.vibrate(10);
+      } catch {
+        /* ignore */
+      }
+    }
+    setSelectionToolbar({
+      text: selectedText,
+      x: rect.left + rect.width / 2,
+      y: rect.top,
+    });
+  }, []);
+
+  useEffect(() => {
+    const onUp = (e: MouseEvent | TouchEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.("[data-selection-toolbar]")) return;
+      if (t?.closest("textarea") || t?.closest("input")) return;
+      window.requestAnimationFrame(() => handleTextSelectionEnd());
+    };
+    const onSel = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) setSelectionToolbar(null);
+    };
+    document.addEventListener("mouseup", onUp);
+    document.addEventListener("touchend", onUp, { passive: true });
+    document.addEventListener("selectionchange", onSel);
+    return () => {
+      document.removeEventListener("mouseup", onUp);
+      document.removeEventListener("touchend", onUp);
+      document.removeEventListener("selectionchange", onSel);
+    };
+  }, [handleTextSelectionEnd]);
   
   const handleDetailedCopy = async () => {
      if(!copyModal) return;
@@ -1228,7 +1329,20 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
 
   return (
     <div className="flex flex-col h-[80vh] relative overflow-hidden rounded-xl shadow-2xl border border-amber-900/30 bg-[#0B0c15]">
-      
+      <style>{`
+        .oracle-msg-selection-active ::selection {
+          background: rgba(201, 169, 110, 0.38);
+          color: inherit;
+        }
+        @keyframes oracle-selection-toolbar-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        .oracle-selection-toolbar {
+          animation: oracle-selection-toolbar-in 0.22s ease-out forwards;
+        }
+      `}</style>
+
       {/* Background Effect */}
       <div className="absolute inset-0 z-0 pointer-events-none">
          <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-indigo-900/10 to-transparent"></div>
@@ -1301,7 +1415,10 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
       </div>
 
       {/* Messages Area */}
-      <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar bg-[#0B0c15]">
+      <div
+        data-oracle-messages
+        className={`relative z-10 flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar bg-[#0B0c15] ${selectionToolbar ? "oracle-msg-selection-active" : ""}`}
+      >
 
         {!setupWizardComplete && chatSession && (
           <div className="max-w-lg mx-auto mt-4 mb-8 rounded-2xl border border-amber-500/25 bg-[#120f26]/95 backdrop-blur-sm p-6 shadow-[0_0_40px_rgba(245,158,11,0.08)] animate-in fade-in zoom-in-95 duration-500">
@@ -1401,12 +1518,15 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
                 </div>
               )}
               
-              <div className={`max-w-[90%] md:max-w-[85%] rounded-2xl p-5 text-sm leading-relaxed shadow-lg relative group/bubble
+              <div
+                data-oracle-bubble={msg.role === "model" ? "model" : "user"}
+                className={`max-w-[90%] md:max-w-[85%] rounded-2xl p-5 text-sm leading-relaxed shadow-lg relative group/bubble
                 ${msg.role === 'user' 
                   ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-tr-none border border-indigo-500/50' 
                   : 'bg-[#15122b] text-indigo-100 rounded-tl-none border border-amber-900/20 pr-14 sm:pr-16'
                 }
-              `}>
+              `}
+              >
                 {msg.role === 'model' && (
                   <button
                     type="button"
@@ -1604,11 +1724,50 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
         </div>
       </div>
       
-      {oracleShareText !== null && (
+      {selectionToolbar && (
+        <div
+          data-selection-toolbar
+          className="oracle-selection-toolbar fixed z-[190] flex items-center gap-1 rounded-full border px-2 py-1.5 shadow-lg"
+          style={{
+            left: Math.min(
+              Math.max(selectionToolbar.x, 72),
+              typeof window !== "undefined" ? window.innerWidth - 72 : selectionToolbar.x
+            ),
+            top: selectionToolbar.y,
+            transform: "translate(-50%, calc(-100% - 12px))",
+            background: "linear-gradient(135deg, #1a1a2e, #0a0a0f)",
+            borderColor: "#c9a96e",
+            boxShadow: "0 4px 24px rgba(201,169,110,0.3)",
+          }}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <button
+            type="button"
+            onClick={() => openOracleShareQuote(selectionToolbar.text)}
+            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide text-amber-100 transition hover:bg-amber-500/15"
+          >
+            <span className="inline-block animate-pulse" aria-hidden>
+              ✨
+            </span>
+            Share this insight
+          </button>
+          <button
+            type="button"
+            title="Copy selection"
+            onClick={() => void copySelectionSnippet(selectionToolbar.text)}
+            className="rounded-full px-2 py-1 text-sm leading-none text-amber-200/90 transition hover:bg-white/10"
+          >
+            📋
+          </button>
+        </div>
+      )}
+
+      {oracleShare !== null && (
         <OracleShareModal
           open
-          onClose={() => setOracleShareText(null)}
-          rawMarkdown={oracleShareText}
+          onClose={() => setOracleShare(null)}
+          rawMarkdown={oracleShare.markdown}
+          variant={oracleShare.quoteOnly ? "quote" : "full"}
           userName={(userName || "").trim() || "Seeker"}
           dashaLine={db ? getOracleShareDashaLine(db) : "Current Dasha"}
           onToast={showShareToast}
