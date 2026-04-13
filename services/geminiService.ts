@@ -982,8 +982,13 @@ KP_HOUSE_SIGNIFICATORS(which planets rule each house via KP):${JSON.stringify(kp
       const d9g = safeQuery(`SELECT planet_name, D9_Navamsha_house, D9_Navamsha_status FROM planets`);
       const d10g = safeQuery(`SELECT planet_name, D10_Dasamsa_house, D10_Dasamsa_status FROM planets`);
       const d60g = safeQuery(`SELECT planet_name, D60_Shastiamsa_house, D60_Shastiamsa_status FROM planets`);
-      const yoginiG = safeQuery(`SELECT period_name, start_date, end_date FROM dashas WHERE system='Yogini' ORDER BY substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||substr(end_date,1,2) DESC LIMIT 3`);
-      const charaG = safeQuery(`SELECT period_name, start_date, end_date FROM dashas WHERE system='Chara (Jaimini)' ORDER BY substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||substr(end_date,1,2) DESC LIMIT 2`);
+      const yoginiG = safeQuery(
+        `SELECT period_name, start_date, end_date FROM dashas WHERE system='Yogini' AND substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||substr(end_date,1,2) >= date('now') ORDER BY substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||substr(end_date,1,2) ASC LIMIT 2`
+      );
+      console.log('YOGINI CHECK:', JSON.stringify(yoginiG));
+      const charaG = safeQuery(
+        `SELECT period_name, start_date, end_date FROM dashas WHERE system='Chara (Jaimini)' AND substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||substr(end_date,1,2) >= date('now') ORDER BY substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||substr(end_date,1,2) ASC LIMIT 2`
+      );
       const transitsG = safeQuery(`SELECT planet, sign, degree, retro FROM current_transits`);
       const savAll = safeQuery(`SELECT house_number, points FROM ashtakvarga_summary`);
       extra = `\nTOPIC:GENERAL_DEEP\nALL_PLANETS_FULL:${JSON.stringify(allPlanets)}\nD9_NAVAMSHA:${JSON.stringify(d9g)}\nD10_DASAMSHA:${JSON.stringify(d10g)}\nD60_SHASTIAMSHA:${JSON.stringify(d60g)}\nKP_LAGNA:${JSON.stringify(kp1)}\nKP_PLANET_SIGNIFICATORS:${JSON.stringify(kpSig)}\nKP_HOUSE_PLANETS:${JSON.stringify(kpHouseSig)}\nSPECIAL_POINTS:${JSON.stringify(sp)}\nELEMENTAL_BALANCE:${JSON.stringify(elem)}\nCHALIT_SHIFTS:${JSON.stringify(chalitShifts)}\nYOGINI_CURRENT:${JSON.stringify(yoginiG)}\nCHARA_CURRENT:${JSON.stringify(charaG)}\nCURRENT_TRANSITS:${JSON.stringify(transitsG)}\nSAV_ALL_HOUSES:${JSON.stringify(savAll)}\n${dashaTimeline}${kpBlock}`;

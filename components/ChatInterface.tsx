@@ -861,6 +861,25 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
 
     const extraContext = (db && shouldInjectChart) ? getExtraContext(db, textToSend) : "";
 
+    let yoginiDasha = '';
+    if (extraContext) {
+      const tags = ['YOGINI_CURRENT:', 'YOGINI_NEXT3:', 'YOGINI:'] as const;
+      for (const tag of tags) {
+        const idx = extraContext.indexOf(tag);
+        if (idx === -1) continue;
+        const from = idx + tag.length;
+        const nextKey = extraContext.slice(from).search(/\n[A-Z][A-Z0-9_]*?:/);
+        yoginiDasha =
+          nextKey === -1
+            ? extraContext.slice(from).trim()
+            : extraContext.slice(from, from + nextKey).trim();
+        break;
+      }
+    }
+    if (db && shouldInjectChart) {
+      console.log('YOGINI SENT TO ORACLE:', yoginiDasha || '(no YOGINI_* segment in CHART_DATA for this topic)');
+    }
+
     // Build the context hint for turns where we skip full injection
     const skipHint = (!shouldInjectChart && lastInjectedTopic)
   ? `[CONTEXT: Topic: ${currentTopic}. Key chart reminder:]\n${generateCompactOneLiner(db)}\n\n`
