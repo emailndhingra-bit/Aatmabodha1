@@ -5,8 +5,13 @@ export class AdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
-    const adminEmail = process.env.ADMIN_EMAIL || 'emailndhingra@gmail.com';
-    if (!user || user.email !== adminEmail) {
+    const adminEmails = (
+      process.env.ADMIN_EMAILS ||
+      'emailndhingra@gmail.com,amol.xlri@gmail.com'
+    )
+      .split(',')
+      .map((e) => e.trim());
+    if (!user || !adminEmails.includes(user.email)) {
       throw new ForbiddenException('Admin access only');
     }
     return true;

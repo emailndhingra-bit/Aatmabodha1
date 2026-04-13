@@ -12,7 +12,7 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
-import { Doughnut, Bar as ChartJsBar, Line, Pie } from 'react-chartjs-2';
+import { Doughnut, Bar as ChartJsBar, Line, Pie, Chart } from 'react-chartjs-2';
 import {
   BarChart,
   Bar as RechartsBar,
@@ -355,6 +355,194 @@ function normTone(t: string | null | undefined): string {
   return (TONE_KEYS as readonly string[]).includes(u) ? u : 'NEUTRAL';
 }
 
+type MySavedChartType = 'bar' | 'line' | 'doughnut' | 'pie';
+
+function bucketMyChartX(log: StatsLog, xField: string): string {
+  switch (xField) {
+    case 'questionCategory':
+      return normCategory(log.questionCategory);
+    case 'emotionalTone':
+      return normTone(log.emotionalTone);
+    case 'questionIntent':
+      return (log.questionIntent || 'GENERAL').toUpperCase();
+    case 'language':
+      return String(log.language || 'EN');
+    case 'cacheHit':
+      return log.cacheHit ? 'HIT' : 'MISS';
+    case 'hour': {
+      if (!log.createdAt) return '—';
+      const d = new Date(log.createdAt);
+      return Number.isNaN(d.getTime()) ? '—' : String(d.getHours());
+    }
+    default:
+      return '—';
+  }
+}
+
+/** Chart.js payload: `{ type, data, options }` — stored as JSON in `chartConfig`. */
+function buildLogsChartConfig(
+  logs: StatsLog[],
+  chartType: MySavedChartType,
+  xField: string,
+  yField: string,
+  groupBy: string,
+): { type: MySavedChartType; data: any; options: any } {
+  type Cell = { count: number; sumCostUsd: number; sumDepth: number; depthCount: number };
+  const cells = new Map<string, Cell>();
+  const useGroup = Boolean(groupBy && groupBy !== 'none');
+
+  const bump = (key: string, log: StatsLog) => {
+    if (!cells.has(key)) {
+      cells.set(key, { count: 0, sumCostUsd: 0, sumDepth: 0, depthCount: 0 });
+    }
+    const c = cells.get(key)!;
+    c.count += 1;
+    c.sumCostUsd += Number(log.costUsd) || 0;
+    const sd = log.sessionDepth;
+    if (sd != null && sd !== undefined && !Number.isNaN(Number(sd))) {
+      c.sumDepth += Number(sd);
+      c.depthCount += 1;
+    }
+  };
+
+  for (const log of logs) {
+    const x = bucketMyChartX(log, xField);
+    if (useGroup) {
+      const g = bucketMyChartX(log, groupBy);
+      bump(`${x}|||${g}`, log);
+    } else {
+      bump(x, log);
+    }
+  }
+
+  const metric = (cell: Cell | undefined): number => {
+    if (!cell || cell.count === 0) return 0;
+    if (yField === 'count') return cell.count;
+    if (yField === 'avgCost') return (cell.sumCostUsd / cell.count) * USD_TO_INR;
+    if (yField === 'sessionDepth') return cell.depthCount ? cell.sumDepth / cell.depthCount : 0;
+    return 0;
+  };
+
+  const axisCommon = {
+    ticks: { color: '#8a8a9a' },
+    grid: { color: BORDER },
+    border: { color: BORDER },
+  };
+
+  const baseOptions: any = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { color: '#a8a8b8', font: { size: 11 } } },
+      tooltip: { backgroundColor: '#1a1a24', titleColor: GOLD, bodyColor: '#ddd' },
+    },
+  };
+
+  if (logs.length === 0) {
+    return {
+      type: chartType,
+      data: { labels: ['No data'], datasets: [{ label: '—', data: [0], backgroundColor: '#444' }] },
+      options: baseOptions,
+    };
+  }
+
+  if (chartType === 'doughnut' || chartType === 'pie') {
+    if (useGroup) {
+      const entries = [...cells.entries()].sort(([ka], [kb]) => ka.localeCompare(kb));
+      const labels = entries.map(([key]) => {
+        const [xv, gv] = key.split('|||');
+        return `${xv} · ${gv}`;
+      });
+      const data = entries.map(([, cell]) => metric(cell));
+      const bg = labels.map((_, i) => `hsla(${40 + (i * 37) % 360}, 55%, 52%, 0.88)`);
+      return {
+        type: chartType,
+        data: {
+          labels,
+          datasets: [{ data, backgroundColor: bg, borderWidth: 0 }],
+        },
+        options: {
+          ...baseOptions,
+          plugins: { ...baseOptions.plugins, legend: { display: true, position: 'bottom', labels: { color: '#a8a8b8' } } },
+        },
+      };
+    }
+    const labels = [...cells.keys()].sort((a, b) => a.localeCompare(b));
+    const data = labels.map((lab) => metric(cells.get(lab)));
+    return {
+      type: chartType,
+      data: {
+        labels,
+        datasets: [
+          {
+            data,
+            backgroundColor: labels.map((_, i) => `hsla(${40 + i * 37}, 55%, 55%, 0.85)`),
+            borderWidth: 0,
+          },
+        ],
+      },
+      options: {
+        ...baseOptions,
+        plugins: { ...baseOptions.plugins, legend: { display: true, position: 'bottom', labels: { color: '#a8a8b8' } } },
+      },
+    };
+  }
+
+  if (!useGroup) {
+    const labels = [...cells.keys()].sort((a, b) => a.localeCompare(b));
+    const data = labels.map((lab) => metric(cells.get(lab)));
+    const label =
+      yField === 'count' ? 'Count' : yField === 'avgCost' ? 'Avg cost (INR)' : 'Avg session depth';
+    return {
+      type: chartType,
+      data: {
+        labels,
+        datasets: [
+          {
+            label,
+            data,
+            backgroundColor: chartType === 'bar' ? 'rgba(201, 169, 110, 0.75)' : undefined,
+            borderColor: chartType === 'line' ? GOLD : undefined,
+            tension: 0.25,
+            fill: chartType === 'line' ? 'origin' : false,
+          },
+        ],
+      },
+      options: {
+        ...baseOptions,
+        scales: { x: { ...axisCommon }, y: { ...axisCommon, beginAtZero: true } },
+      },
+    };
+  }
+
+  const xSet = new Set<string>();
+  const gSet = new Set<string>();
+  for (const key of cells.keys()) {
+    const [xv, gv] = key.split('|||');
+    xSet.add(xv);
+    gSet.add(gv);
+  }
+  const labels = [...xSet].sort((a, b) => a.localeCompare(b));
+  const groups = [...gSet].sort((a, b) => a.localeCompare(b));
+  const palette = ['#c9a96e', '#818cf8', '#34d399', '#f472b6', '#60a5fa', '#fbbf24', '#f87171'];
+  const datasets = groups.map((g, gi) => ({
+    label: g,
+    data: labels.map((lab) => metric(cells.get(`${lab}|||${g}`))),
+    backgroundColor: chartType === 'bar' ? palette[gi % palette.length] : undefined,
+    borderColor: chartType === 'line' ? palette[gi % palette.length] : undefined,
+    tension: 0.25,
+  }));
+
+  return {
+    type: chartType,
+    data: { labels, datasets },
+    options: {
+      ...baseOptions,
+      scales: { x: { ...axisCommon }, y: { ...axisCommon, beginAtZero: true } },
+    },
+  };
+}
+
 function planetFromDasha(d: string | null | undefined): string | null {
   if (!d || !String(d).trim()) return null;
   const m = String(d).trim().match(/^([A-Za-z]+)/);
@@ -622,7 +810,7 @@ const axisCommon = {
 };
 
 export default function AdminDashboard() {
-  const [tab, setTab] = useState<'users' | 'questions' | 'cost' | 'karma' | 'reports'>('users');
+  const [tab, setTab] = useState<'users' | 'questions' | 'cost' | 'karma' | 'mycharts' | 'reports'>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -647,6 +835,17 @@ export default function AdminDashboard() {
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [analyticsUpdatedAt, setAnalyticsUpdatedAt] = useState<number | null>(null);
   const [analyticsRefreshing, setAnalyticsRefreshing] = useState(false);
+
+  const [savedCharts, setSavedCharts] = useState<any[]>([]);
+  const [myChartsLoading, setMyChartsLoading] = useState(false);
+  const [mcName, setMcName] = useState('');
+  const [mcType, setMcType] = useState<MySavedChartType>('bar');
+  const [mcX, setMcX] = useState('questionCategory');
+  const [mcY, setMcY] = useState('count');
+  const [mcGroup, setMcGroup] = useState('none');
+  const [mcDesc, setMcDesc] = useState('');
+  const [mcPreview, setMcPreview] = useState<{ type: MySavedChartType; data: any; options: any } | null>(null);
+  const [mcEdit, setMcEdit] = useState<{ id: string; chartName: string; description: string } | null>(null);
 
   const token = localStorage.getItem('auth_token');
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
@@ -698,6 +897,24 @@ export default function AdminDashboard() {
       setAnalyticsRefreshing(false);
     }
   }, []);
+
+  const fetchSavedCharts = useCallback(async () => {
+    if (!token) return;
+    const h = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    setMyChartsLoading(true);
+    try {
+      const r = await fetch(`${BACKEND}/api/saved-charts`, { headers: h });
+      if (r.ok) setSavedCharts(await r.json());
+      else setSavedCharts([]);
+    } finally {
+      setMyChartsLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (tab !== 'mycharts' || !token) return;
+    void fetchSavedCharts();
+  }, [tab, token, fetchSavedCharts]);
 
   useEffect(() => {
     if (tab !== 'questions') return;
@@ -784,6 +1001,93 @@ export default function AdminDashboard() {
   const statusColor: Record<string, string> = { approved: '#1a7a3e', pending: '#7a5c00', rejected: '#7a1a1a' };
   const statusBg: Record<string, string> = { approved: '#d4edda', pending: '#fff3cd', rejected: '#f8d7da' };
 
+  const myChartLogs = useMemo(() => normalizeLogs(stats), [stats]);
+
+  const runMcPreview = useCallback(() => {
+    if (!stats) {
+      setMsg('Load dashboard stats first.');
+      setTimeout(() => setMsg(''), 3000);
+      return;
+    }
+    setMcPreview(buildLogsChartConfig(myChartLogs, mcType, mcX, mcY, mcGroup));
+  }, [stats, myChartLogs, mcType, mcX, mcY, mcGroup]);
+
+  const saveMcChart = useCallback(async () => {
+    if (!token) return;
+    if (!mcName.trim()) {
+      setMsg('Set a chart name before saving.');
+      setTimeout(() => setMsg(''), 3000);
+      return;
+    }
+    if (!mcPreview) {
+      setMsg('Click Preview Chart first.');
+      setTimeout(() => setMsg(''), 3000);
+      return;
+    }
+    const h = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    const body = {
+      chartName: mcName.trim(),
+      chartType: mcType,
+      chartConfig: JSON.stringify(mcPreview),
+      description: mcDesc.trim() || undefined,
+      xAxis: mcX,
+      yAxis: mcY,
+      groupBy: mcGroup === 'none' ? undefined : mcGroup,
+    };
+    const r = await fetch(`${BACKEND}/api/saved-charts`, { method: 'POST', headers: h, body: JSON.stringify(body) });
+    if (r.ok) {
+      setMsg('Chart saved.');
+      setTimeout(() => setMsg(''), 2500);
+      await fetchSavedCharts();
+    } else {
+      setMsg('Save failed — check admin login / network.');
+      setTimeout(() => setMsg(''), 4000);
+    }
+  }, [token, mcName, mcPreview, mcDesc, mcX, mcY, mcGroup, mcType, fetchSavedCharts]);
+
+  const toggleMcPin = useCallback(
+    async (id: string) => {
+      if (!token) return;
+      const h = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+      const r = await fetch(`${BACKEND}/api/saved-charts/${id}/pin`, { method: 'PATCH', headers: h });
+      if (r.ok) await fetchSavedCharts();
+    },
+    [token, fetchSavedCharts],
+  );
+
+  const deleteMcChart = useCallback(
+    async (id: string) => {
+      if (!token || !confirm('Delete this saved chart?')) return;
+      const h = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+      const r = await fetch(`${BACKEND}/api/saved-charts/${id}`, { method: 'DELETE', headers: h });
+      if (r.ok) {
+        setMsg('Chart deleted.');
+        setTimeout(() => setMsg(''), 2500);
+        await fetchSavedCharts();
+      }
+    },
+    [token, fetchSavedCharts],
+  );
+
+  const saveMcEdit = useCallback(async () => {
+    if (!token || !mcEdit) return;
+    const h = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    const r = await fetch(`${BACKEND}/api/saved-charts/${mcEdit.id}`, {
+      method: 'PATCH',
+      headers: h,
+      body: JSON.stringify({
+        chartName: mcEdit.chartName.trim(),
+        description: mcEdit.description.trim() || undefined,
+      }),
+    });
+    if (r.ok) {
+      setMcEdit(null);
+      setMsg('Chart updated.');
+      setTimeout(() => setMsg(''), 2500);
+      await fetchSavedCharts();
+    }
+  }, [token, mcEdit, fetchSavedCharts]);
+
   if (loading) return <div style={{ padding: 40, color: '#ccc', background: '#0d0d1a', minHeight: '100vh' }}>Loading admin data...</div>;
 
   return (
@@ -818,7 +1122,7 @@ export default function AdminDashboard() {
 
       {/* TABS */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #2a2a4a', paddingBottom: 0 }}>
-        {(['users', 'questions', 'cost', 'karma', 'reports'] as const).map((t) => (
+        {(['users', 'questions', 'cost', 'karma', 'mycharts', 'reports'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -831,7 +1135,7 @@ export default function AdminDashboard() {
               color: tab === t ? '#c9a84c' : '#666',
               fontWeight: tab === t ? 600 : 400,
               fontSize: 13,
-              textTransform: t === 'karma' ? 'none' : 'capitalize',
+              textTransform: t === 'karma' || t === 'mycharts' ? 'none' : 'capitalize',
               borderBottom: tab === t ? '2px solid #c9a84c' : '2px solid transparent',
             }}
           >
@@ -843,7 +1147,9 @@ export default function AdminDashboard() {
                   ? 'Analytics'
                   : t === 'karma'
                     ? 'Project Karma'
-                    : 'Reports'}
+                    : t === 'mycharts'
+                      ? 'My Charts'
+                      : 'Reports'}
           </button>
         ))}
       </div>
@@ -2038,6 +2344,389 @@ export default function AdminDashboard() {
                 </div>
               </div>
             </>
+          )}
+        </div>
+      )}
+
+      {/* MY CHARTS TAB */}
+      {tab === 'mycharts' && (
+        <div style={{ background: BG, borderRadius: 12, padding: '20px 16px 28px', border: `1px solid ${BORDER}` }}>
+          <h2 style={{ color: GOLD, fontSize: 18, fontWeight: 700, margin: '0 0 8px' }}>My Charts</h2>
+          <p style={{ color: '#7a7a8c', fontSize: 12, margin: '0 0 20px' }}>
+            Build charts from admin stats logs, preview with Chart.js, save configs to the database (per admin email).
+          </p>
+
+          {/* PART A — builder */}
+          <div
+            style={{
+              background: CARD,
+              border: `1px solid ${BORDER}`,
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 22,
+            }}
+          >
+            <h3 style={{ color: GOLD, fontSize: 14, margin: '0 0 12px' }}>Chart builder</h3>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                gap: 12,
+                marginBottom: 14,
+              }}
+            >
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: '#9a9aaa' }}>
+                Chart name
+                <input
+                  value={mcName}
+                  onChange={(e) => setMcName(e.target.value)}
+                  placeholder="e.g. Career vs tone"
+                  style={{
+                    background: '#16161e',
+                    border: `1px solid ${BORDER}`,
+                    borderRadius: 8,
+                    padding: '8px 10px',
+                    color: '#e8e8ee',
+                    fontSize: 13,
+                  }}
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: '#9a9aaa' }}>
+                Chart type
+                <select
+                  value={mcType}
+                  onChange={(e) => setMcType(e.target.value as MySavedChartType)}
+                  style={{
+                    background: '#16161e',
+                    border: `1px solid ${BORDER}`,
+                    borderRadius: 8,
+                    padding: '8px 10px',
+                    color: '#e8e8ee',
+                    fontSize: 13,
+                  }}
+                >
+                  <option value="bar">Bar</option>
+                  <option value="line">Line</option>
+                  <option value="doughnut">Doughnut</option>
+                  <option value="pie">Pie</option>
+                </select>
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: '#9a9aaa' }}>
+                X axis
+                <select
+                  value={mcX}
+                  onChange={(e) => setMcX(e.target.value)}
+                  style={{
+                    background: '#16161e',
+                    border: `1px solid ${BORDER}`,
+                    borderRadius: 8,
+                    padding: '8px 10px',
+                    color: '#e8e8ee',
+                    fontSize: 13,
+                  }}
+                >
+                  {['questionCategory', 'emotionalTone', 'questionIntent', 'language', 'cacheHit', 'hour'].map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: '#9a9aaa' }}>
+                Y axis
+                <select
+                  value={mcY}
+                  onChange={(e) => setMcY(e.target.value)}
+                  style={{
+                    background: '#16161e',
+                    border: `1px solid ${BORDER}`,
+                    borderRadius: 8,
+                    padding: '8px 10px',
+                    color: '#e8e8ee',
+                    fontSize: 13,
+                  }}
+                >
+                  <option value="count">count</option>
+                  <option value="avgCost">avgCost (INR)</option>
+                  <option value="sessionDepth">sessionDepth (avg)</option>
+                </select>
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: '#9a9aaa' }}>
+                Group by (optional)
+                <select
+                  value={mcGroup}
+                  onChange={(e) => setMcGroup(e.target.value)}
+                  style={{
+                    background: '#16161e',
+                    border: `1px solid ${BORDER}`,
+                    borderRadius: 8,
+                    padding: '8px 10px',
+                    color: '#e8e8ee',
+                    fontSize: 13,
+                  }}
+                >
+                  <option value="none">none</option>
+                  {['questionCategory', 'emotionalTone', 'questionIntent', 'language', 'cacheHit', 'hour'].map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: '#9a9aaa', gridColumn: '1 / -1' }}>
+                Description (optional)
+                <input
+                  value={mcDesc}
+                  onChange={(e) => setMcDesc(e.target.value)}
+                  placeholder="Short note for the gallery card"
+                  style={{
+                    background: '#16161e',
+                    border: `1px solid ${BORDER}`,
+                    borderRadius: 8,
+                    padding: '8px 10px',
+                    color: '#e8e8ee',
+                    fontSize: 13,
+                  }}
+                />
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => runMcPreview()}
+                style={{
+                  background: CARD,
+                  color: GOLD,
+                  border: `1px solid ${BORDER}`,
+                  borderRadius: 8,
+                  padding: '10px 18px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontSize: 13,
+                }}
+              >
+                Preview chart
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveMcChart()}
+                style={{
+                  background: GOLD,
+                  color: '#111',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '10px 18px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  fontSize: 13,
+                }}
+              >
+                Save chart
+              </button>
+            </div>
+            {mcPreview && (
+              <div style={{ marginTop: 18, height: 320, position: 'relative' }}>
+                <Chart type={mcPreview.type} data={mcPreview.data} options={mcPreview.options} />
+              </div>
+            )}
+          </div>
+
+          {/* PART B — gallery */}
+          <h3 style={{ color: GOLD, fontSize: 14, margin: '0 0 12px' }}>Saved charts gallery</h3>
+          {myChartsLoading ? (
+            <div style={{ color: '#888', padding: 24 }}>Loading saved charts…</div>
+          ) : savedCharts.length === 0 ? (
+            <div style={{ color: '#666', padding: 16, fontSize: 13 }}>No saved charts yet. Build one above and save.</div>
+          ) : (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                gap: 16,
+              }}
+            >
+              {savedCharts.map((c: any) => {
+                let parsed: { type?: MySavedChartType; data: any; options?: any } | null = null;
+                try {
+                  parsed = JSON.parse(c.chartConfig);
+                } catch {
+                  parsed = null;
+                }
+                const chartType = (parsed?.type || c.chartType || 'bar') as MySavedChartType;
+                return (
+                  <div
+                    key={c.id}
+                    style={{
+                      background: CARD,
+                      border: `1px solid ${BORDER}`,
+                      borderRadius: 12,
+                      padding: 14,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 10,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: '#f0f0f6' }}>{c.chartName}</div>
+                        {c.description && (
+                          <div style={{ fontSize: 12, color: '#8a8a9a', marginTop: 4 }}>{c.description}</div>
+                        )}
+                        <div style={{ fontSize: 10, color: '#5a5a6c', marginTop: 6 }}>
+                          {c.xAxis} · {c.yAxis}
+                          {c.groupBy ? ` · group ${c.groupBy}` : ''}
+                          {c.isPinned ? ' · pinned' : ''}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                        <button
+                          type="button"
+                          title="Pin"
+                          onClick={() => void toggleMcPin(c.id)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: 18,
+                            lineHeight: 1,
+                          }}
+                        >
+                          📌
+                        </button>
+                        <button
+                          type="button"
+                          title="Edit name / description"
+                          onClick={() =>
+                            setMcEdit({
+                              id: c.id,
+                              chartName: c.chartName || '',
+                              description: c.description || '',
+                            })
+                          }
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: 18,
+                            lineHeight: 1,
+                          }}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          type="button"
+                          title="Delete"
+                          onClick={() => void deleteMcChart(c.id)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: 18,
+                            lineHeight: 1,
+                          }}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ height: 220, position: 'relative' }}>
+                      {parsed?.data ? (
+                        <Chart type={chartType} data={parsed.data} options={parsed.options ?? {}} />
+                      ) : (
+                        <div style={{ color: '#f87171', fontSize: 12 }}>Could not parse chartConfig</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {mcEdit && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(0,0,0,0.65)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 50,
+                padding: 16,
+              }}
+            >
+              <div
+                style={{
+                  background: CARD,
+                  border: `1px solid ${BORDER}`,
+                  borderRadius: 12,
+                  padding: 20,
+                  maxWidth: 400,
+                  width: '100%',
+                }}
+              >
+                <div style={{ fontSize: 15, fontWeight: 700, color: GOLD, marginBottom: 14 }}>Edit chart</div>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: '#9a9aaa', marginBottom: 12 }}>
+                  Name
+                  <input
+                    value={mcEdit.chartName}
+                    onChange={(e) => setMcEdit({ ...mcEdit, chartName: e.target.value })}
+                    style={{
+                      background: '#16161e',
+                      border: `1px solid ${BORDER}`,
+                      borderRadius: 8,
+                      padding: '8px 10px',
+                      color: '#e8e8ee',
+                    }}
+                  />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: '#9a9aaa', marginBottom: 16 }}>
+                  Description
+                  <input
+                    value={mcEdit.description}
+                    onChange={(e) => setMcEdit({ ...mcEdit, description: e.target.value })}
+                    style={{
+                      background: '#16161e',
+                      border: `1px solid ${BORDER}`,
+                      borderRadius: 8,
+                      padding: '8px 10px',
+                      color: '#e8e8ee',
+                    }}
+                  />
+                </label>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={() => setMcEdit(null)}
+                    style={{
+                      background: 'transparent',
+                      color: '#aaa',
+                      border: `1px solid ${BORDER}`,
+                      borderRadius: 8,
+                      padding: '8px 14px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void saveMcEdit()}
+                    style={{
+                      background: GOLD,
+                      color: '#111',
+                      border: 'none',
+                      borderRadius: 8,
+                      padding: '8px 16px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       )}

@@ -4,6 +4,12 @@ import { UsersService } from '../users/users.service';
 import { User, UserStatus } from '../users/user.entity';
 import * as bcrypt from 'bcrypt';
 
+function adminEmailList(): string[] {
+  return (process.env.ADMIN_EMAILS || 'emailndhingra@gmail.com,amol.xlri@gmail.com')
+    .split(',')
+    .map((e) => e.trim());
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -20,13 +26,13 @@ export class AuthService {
       if (user) {
         user = await this.usersService.updateUser(user.id, { googleId: id });
       } else {
-        const adminEmail = process.env.ADMIN_EMAIL || 'emailndhingra@gmail.com';
+        const admins = adminEmailList();
         user = await this.usersService.createUser({
           googleId: id,
           email,
           name: displayName,
           picture: photos?.[0]?.value,
-          status: email === adminEmail ? UserStatus.APPROVED : UserStatus.PENDING,
+          status: admins.includes(email) ? UserStatus.APPROVED : UserStatus.PENDING,
         });
       }
     }
@@ -45,8 +51,7 @@ export class AuthService {
     const existing = await this.usersService.findByEmail(email);
     if (existing) throw new BadRequestException('Email already registered');
     const hash = await bcrypt.hash(password, 10);
-    const adminEmail = process.env.ADMIN_EMAIL || 'emailndhingra@gmail.com';
-    const status = email === adminEmail ? UserStatus.APPROVED : UserStatus.PENDING;
+    const status = adminEmailList().includes(email) ? UserStatus.APPROVED : UserStatus.PENDING;
     const user = await this.usersService.createUser({
       email,
       password: hash,
@@ -62,7 +67,6 @@ export class AuthService {
   }
 
   isAdmin(email: string): boolean {
-    const adminEmail = process.env.ADMIN_EMAIL || 'emailndhingra@gmail.com';
-    return email === adminEmail;
+    return adminEmailList().includes(email);
   }
 }
