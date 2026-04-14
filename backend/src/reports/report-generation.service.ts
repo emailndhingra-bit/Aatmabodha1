@@ -6,6 +6,7 @@ import { Profile } from '../profiles/profile.entity';
 import { chartPayloadFromProfileFields } from './chart-payload.util';
 import { buildReportSectionPrompt } from './report-prompt';
 import { PdfUtilsService } from './pdf-utils.service';
+import { GeneratedReport } from './generated-report.entity';
 import { GeneratedReportsService } from './generated-reports.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';

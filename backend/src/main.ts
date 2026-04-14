@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import * as express from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -10,6 +11,9 @@ async function bootstrap() {
   fs.mkdirSync(uploadsReports, { recursive: true });
 
   const app = await NestFactory.create(AppModule);
+
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
   app.enableCors({
     origin: ['https://aatmabodha1.onrender.com', 'http://localhost:5173'],

@@ -36,7 +36,7 @@ export class ReportsHubController {
   }
 
   @Get('profiles')
-  async profiles(@Query('search') search?: string) {
+  async listProfiles(@Query('search') search?: string) {
     return this.profiles.listProfilesForReportsHub(search);
   }
 
