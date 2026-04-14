@@ -40,6 +40,12 @@ export class Profile {
   @Column({ default: 0 })
   questionsUsed: number;
 
+  @Column({ default: false })
+  createdByAdmin: boolean;
+
+  @Column({ nullable: true })
+  purpose: string;
+
   @CreateDateColumn()
   createdAt: Date;
 }

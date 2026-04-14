@@ -27,6 +27,7 @@ import Login from './src/pages/Login';
 import AuthCallback from './src/pages/AuthCallback';
 import PendingApproval from './src/pages/PendingApproval';
 import AdminRoute from './src/pages/AdminRoute';
+import FloatingHelpBot from './components/FloatingHelpBot';
 
 type CultureMode = 'EN' | 'JP' | 'HI';
 
@@ -1163,11 +1164,51 @@ const App: React.FC = () => {
   }, [authUserTick]);
   const isAdmin = isAppAdminEmail(currentUser?.email);
 
+  const [adminQuickTestName, setAdminQuickTestName] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const q = JSON.parse(localStorage.getItem('adminQuickChart') || 'null');
+      if (q?.name) {
+        setAdminQuickTestName(String(q.name));
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+    setAdminQuickTestName(null);
+  }, [data, authUserTick]);
+
+  const handleSignOut = () => {
+    try {
+      const q = JSON.parse(localStorage.getItem('adminQuickChart') || 'null');
+      if (q?.sessionOnly) {
+        localStorage.removeItem('adminQuickChart');
+        localStorage.removeItem('vedicAstroData');
+        localStorage.removeItem('adminActiveProfile');
+        localStorage.removeItem('activeOracleDB');
+        localStorage.removeItem('vedicUserLocation');
+        localStorage.removeItem('vedicUserTimezone');
+      }
+    } catch {
+      /* ignore */
+    }
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+    window.location.href = '/login';
+  };
+
   return (
     <div className="min-h-screen bg-[#0B0c15] text-amber-50 font-serif selection:bg-amber-900/50 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]">
-      
       {/* Mystical Header */}
       <header className="border-b border-amber-900/30 bg-[#120f26]/80 backdrop-blur-md sticky top-0 z-40 shadow-2xl shadow-indigo-950/50">
+        {isAdmin && adminQuickTestName && (
+          <div
+            className="border-b border-amber-500/40 bg-gradient-to-r from-amber-950/90 to-amber-900/70 px-4 py-1.5 text-center text-xs font-semibold tracking-wide text-amber-100"
+            role="status"
+          >
+            Testing: {adminQuickTestName}&apos;s Chart
+          </div>
+        )}
         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3 group cursor-pointer" onClick={() => window.location.reload()}>
             <div className="p-2 bg-gradient-to-br from-amber-600 to-amber-800 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.3)] group-hover:shadow-[0_0_25px_rgba(245,158,11,0.5)] transition-all duration-500 border border-amber-400/30">
@@ -1196,6 +1237,14 @@ const App: React.FC = () => {
                  <span className="hidden sm:inline">Admin</span>
                </a>
              )}
+
+             <button
+               type="button"
+               onClick={handleSignOut}
+               className="shrink-0 rounded-lg border border-indigo-600/40 bg-indigo-950/50 px-3 py-2 text-xs font-bold uppercase tracking-wider text-indigo-200 hover:border-rose-500/50 hover:text-rose-100"
+             >
+               Sign out
+             </button>
 
              {data && (
                <div className="flex gap-2 shrink-0">
@@ -1910,6 +1959,8 @@ const App: React.FC = () => {
         className="hidden"
         onChange={handleImportVault}
       />
+
+      <FloatingHelpBot />
     </div>
   );
 };

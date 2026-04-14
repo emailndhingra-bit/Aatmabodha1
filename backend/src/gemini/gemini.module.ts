@@ -9,5 +9,6 @@ import { UsersModule } from '../users/users.module';
   imports: [QuestionsModule, ReportsModule, UsersModule],
   controllers: [GeminiController],
   providers: [GeminiService],
+  exports: [GeminiService],
 })
 export class GeminiModule {}

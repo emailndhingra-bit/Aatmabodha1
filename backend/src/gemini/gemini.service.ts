@@ -118,15 +118,19 @@ export class GeminiService {
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), GEMINI_GENERATE_TIMEOUT_MS);
+      const genCfg: Record<string, unknown> = {};
+      if (responseFormat === 'json') genCfg.responseMimeType = 'application/json';
+      if (typeof body.maxOutputTokens === 'number' && body.maxOutputTokens > 0) {
+        genCfg.maxOutputTokens = body.maxOutputTokens;
+      }
+      const reqBody: Record<string, unknown> = { contents: [{ parts }] };
+      if (Object.keys(genCfg).length > 0) reqBody.generationConfig = genCfg;
       let res: Response;
       try {
         res = await fetch(geminiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts }],
-            generationConfig: responseFormat === 'json' ? { responseMimeType: 'application/json' } : {},
-          }),
+          body: JSON.stringify(reqBody),
           signal: controller.signal,
         });
       } catch (err: unknown) {
@@ -162,7 +166,7 @@ export class GeminiService {
         costUsd = 0;
       }
 
-      if (userId) {
+      if (userId && !body.skipQuestionLog) {
         await this.questionsService
           .logQuestion({
             userId,

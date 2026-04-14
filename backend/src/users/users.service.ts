@@ -57,8 +57,32 @@ export class UsersService {
     await this.usersRepository.increment({ id }, 'questionsUsed', 1);
   }
 
+  /** Effective monthly cap: custom_quota if set, else 60. 0 = unlimited. */
+  getEffectiveQuota(user: User | null): number {
+    if (!user) return 60;
+    if (user.customQuota != null) return user.customQuota;
+    return 60;
+  }
+
+  isUnlimitedQuota(user: User | null): boolean {
+    return user != null && user.customQuota === 0;
+  }
+
+  hasQuotaRemaining(user: User | null): boolean {
+    if (!user) return false;
+    const cap = this.getEffectiveQuota(user);
+    if (cap === 0) return true;
+    return user.questionsUsed < cap;
+  }
+
   async canAskQuestion(id: string): Promise<boolean> {
     const user = await this.findById(id);
-    return user.status === UserStatus.APPROVED && user.questionsUsed < user.questionsLimit;
+    if (!user) return false;
+    return user.status === UserStatus.APPROVED && this.hasQuotaRemaining(user);
+  }
+
+  async setCustomQuota(userId: string, quota: number): Promise<User> {
+    await this.usersRepository.update(userId, { customQuota: quota });
+    return this.findById(userId);
   }
 }

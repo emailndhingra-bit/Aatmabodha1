@@ -1,5 +1,10 @@
-import { useState, useEffect, useMemo, useCallback, Fragment } from 'react';
-import { fetchAnalysisForProfile } from '../../services/chartFromProfile';
+import { useState, useEffect, useMemo, useCallback, Fragment, useRef } from 'react';
+import type { CSSProperties } from 'react';
+import {
+  buildAnalysisResultFromChartJson,
+  convertToISTForAPI,
+  fetchAnalysisForProfile,
+} from '../../services/chartFromProfile';
 import {
   Chart as ChartJS,
   ArcElement,
@@ -42,6 +47,7 @@ const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://aatmabodha1-backend
 const LS_ADMIN_ACTIVE_PROFILE = 'adminActiveProfile';
 const LS_ADMIN_PROFILE_DIRECTORY = 'adminProfileDirectory';
 const LS_ACTIVE_ORACLE_DB = 'activeOracleDB';
+const LS_ADMIN_QUICK_CHART = 'adminQuickChart';
 
 function uint8ToBase64(u8: Uint8Array): string {
   let binary = '';
@@ -71,6 +77,33 @@ const GOLD = '#c9a96e';
 const BG = '#0a0a0f';
 const CARD = '#12121a';
 const BORDER = '#2a2a38';
+
+const qcInput: CSSProperties = {
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '8px 10px',
+  borderRadius: 8,
+  border: `1px solid ${BORDER}`,
+  background: '#111',
+  color: '#eee',
+};
+
+const qcBtn: CSSProperties = {
+  background: '#1a1a3e',
+  color: GOLD,
+  border: `1px solid ${BORDER}`,
+  borderRadius: 8,
+  padding: '8px 14px',
+  cursor: 'pointer',
+  fontSize: 13,
+};
+
+function formatAudTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
 const CATEGORY_COLORS: Record<string, string> = {
   CAREER: '#378ADD',
@@ -837,12 +870,54 @@ const axisCommon = {
   border: { color: BORDER },
 };
 
+const SARVAM_LANGS: { code: string; label: string }[] = [
+  { code: 'hi-IN', label: 'Hindi' },
+  { code: 'bn-IN', label: 'Bengali' },
+  { code: 'ta-IN', label: 'Tamil' },
+  { code: 'te-IN', label: 'Telugu' },
+  { code: 'mr-IN', label: 'Marathi' },
+  { code: 'gu-IN', label: 'Gujarati' },
+  { code: 'kn-IN', label: 'Kannada' },
+  { code: 'ml-IN', label: 'Malayalam' },
+  { code: 'pa-IN', label: 'Punjabi' },
+  { code: 'od-IN', label: 'Odia' },
+];
+
 export default function AdminDashboard() {
-  const [tab, setTab] = useState<'users' | 'questions' | 'cost' | 'karma' | 'mycharts' | 'reports'>('users');
+  const [tab, setTab] = useState<
+    'users' | 'questions' | 'cost' | 'karma' | 'mycharts' | 'reports' | 'quickchart' | 'audiooracle'
+  >('users');
   const [users, setUsers] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
+
+  const [qcName, setQcName] = useState('');
+  const [qcDob, setQcDob] = useState('');
+  const [qcTob, setQcTob] = useState('');
+  const [qcPlace, setQcPlace] = useState('');
+  const [qcLat, setQcLat] = useState('');
+  const [qcLon, setQcLon] = useState('');
+  const [qcTz, setQcTz] = useState('5.5');
+  const [qcGender, setQcGender] = useState('Prefer not to say');
+  const [qcSessionOnly, setQcSessionOnly] = useState(true);
+  const [qcBusy, setQcBusy] = useState(false);
+  const [qcGeoBusy, setQcGeoBusy] = useState(false);
+
+  const [quotaEditUserId, setQuotaEditUserId] = useState<string | null>(null);
+  const [quotaDraft, setQuotaDraft] = useState('');
+
+  const [audLang, setAudLang] = useState('hi-IN');
+  const [audProfileId, setAudProfileId] = useState('');
+  const [audQuestion, setAudQuestion] = useState('');
+  const [audBusy, setAudBusy] = useState(false);
+  const [audText, setAudText] = useState('');
+  const [audB64, setAudB64] = useState<string | null>(null);
+  const [audPlaying, setAudPlaying] = useState(false);
+  const [audTime, setAudTime] = useState(0);
+  const [audDur, setAudDur] = useState(0);
+  const [showAudTranscript, setShowAudTranscript] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const [reportStats, setReportStats] = useState<{
     totalReports: number;
@@ -881,13 +956,16 @@ export default function AdminDashboard() {
   const [myProfiles, setMyProfiles] = useState<any[]>([]);
 
   const token = localStorage.getItem('auth_token');
-  const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+  const headers = useMemo(
+    () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }),
+    [token],
+  );
 
-  const fetchUsers = async () => {
-    const r = await fetch(`${BACKEND}/api/auth/admin/users`, { headers });
+  const fetchUsers = useCallback(async () => {
+    const r = await fetch(`${BACKEND}/api/admin/users`, { headers });
     const d = await r.json();
     setUsers(Array.isArray(d) ? d : []);
-  };
+  }, [headers]);
 
   const fetchStats = async () => {
     const r = await fetch(`${BACKEND}/api/admin/stats`, { headers });
@@ -1260,6 +1338,264 @@ export default function AdminDashboard() {
     [token],
   );
 
+  const geocodeQuickChart = useCallback(async () => {
+    if (!qcPlace.trim()) {
+      setMsg('Enter a place first.');
+      setTimeout(() => setMsg(''), 2500);
+      return;
+    }
+    setQcGeoBusy(true);
+    try {
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(qcPlace.trim())}`,
+        { headers: { 'Accept-Language': 'en', 'User-Agent': 'AatmabodhaAdmin/1.0 (contact: app)' } },
+      );
+      const data = await r.json();
+      if (Array.isArray(data) && data[0]) {
+        setQcLat(String(data[0].lat));
+        setQcLon(String(data[0].lon));
+        setMsg('Location found.');
+      } else {
+        setMsg('No results — try a larger city or region.');
+      }
+    } catch {
+      setMsg('Geocode failed.');
+    } finally {
+      setQcGeoBusy(false);
+      setTimeout(() => setMsg(''), 4000);
+    }
+  }, [qcPlace]);
+
+  const submitQuickChart = useCallback(async () => {
+    if (!token) return;
+    const tz = parseFloat(qcTz) || 5.5;
+    const lat = parseFloat(qcLat);
+    const lon = parseFloat(qcLon);
+    if (!qcName.trim() || !qcDob || !qcTob || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+      setMsg('Fill name, DOB, TOB, and valid coordinates (Geocode or enter lat/lon).');
+      setTimeout(() => setMsg(''), 4000);
+      return;
+    }
+    const { date_of_birth, time_of_birth } = convertToISTForAPI(qcDob, qcTob, tz);
+    const permanent = !qcSessionOnly;
+    setQcBusy(true);
+    try {
+      const r = await fetch(`${BACKEND}/api/admin/quick-chart`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          name: qcName.trim(),
+          date_of_birth,
+          time_of_birth,
+          latitude: lat,
+          longitude: lon,
+          timezone: tz,
+          gender: qcGender,
+          placeOfBirth: qcPlace.trim() || undefined,
+          storageDateOfBirth: qcDob,
+          storageTimeOfBirth: qcTob,
+          permanent,
+        }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error((err as { message?: string }).message || `HTTP ${r.status}`);
+      }
+      const payload = await r.json();
+      const analysis = buildAnalysisResultFromChartJson(payload.chart, {
+        name: qcName.trim(),
+        gender: qcGender,
+        dateOfBirth: qcDob,
+        timeOfBirth: qcTob,
+        placeOfBirth: qcPlace,
+        latitude: lat,
+        longitude: lon,
+        timezone: tz,
+      });
+      localStorage.setItem('vedicUserLocation', `${lat.toFixed(4)}, ${lon.toFixed(4)}`);
+      localStorage.setItem('vedicUserTimezone', String(tz));
+      try {
+        localStorage.setItem('vedicAstroData', JSON.stringify(analysis));
+      } catch {
+        setMsg('Chart JSON too large for this browser storage.');
+        setTimeout(() => setMsg(''), 5000);
+        return;
+      }
+      const { initDatabase } = await import('../../services/db');
+      const db = await initDatabase(analysis, lat, lon);
+      if (db && typeof (db as any).export === 'function') {
+        localStorage.setItem(LS_ACTIVE_ORACLE_DB, uint8ToBase64((db as any).export()));
+      } else {
+        localStorage.removeItem(LS_ACTIVE_ORACLE_DB);
+      }
+      const savedProfile = payload.profile;
+      const authUser = JSON.parse(localStorage.getItem('auth_user') || 'null');
+      const entry = {
+        userId: authUser?.id,
+        profileId: savedProfile?.id ?? `quick-${Date.now()}`,
+        profileName: qcName.trim(),
+        userEmail: authUser?.email,
+        profile: savedProfile || {
+          name: qcName.trim(),
+          gender: qcGender,
+          dateOfBirth: qcDob,
+          timeOfBirth: qcTob,
+          placeOfBirth: qcPlace,
+          latitude: lat,
+          longitude: lon,
+          timezone: tz,
+        },
+        dbData: analysis,
+        purpose: 'Test Only',
+      };
+      localStorage.setItem(LS_ADMIN_ACTIVE_PROFILE, JSON.stringify(entry));
+      localStorage.setItem(
+        LS_ADMIN_QUICK_CHART,
+        JSON.stringify({
+          name: qcName.trim(),
+          sessionOnly: qcSessionOnly,
+          purpose: 'Test Only',
+          profileId: savedProfile?.id ?? null,
+        }),
+      );
+      setAdminProfileUiTick((t) => t + 1);
+      setMsg('Quick chart ready — opening Oracle…');
+      setTimeout(() => setMsg(''), 2500);
+      window.location.href = '/';
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      setMsg(err?.message || 'Quick chart failed');
+      setTimeout(() => setMsg(''), 5000);
+    } finally {
+      setQcBusy(false);
+    }
+  }, [
+    token,
+    headers,
+    qcName,
+    qcDob,
+    qcTob,
+    qcLat,
+    qcLon,
+    qcTz,
+    qcGender,
+    qcPlace,
+    qcSessionOnly,
+  ]);
+
+  const saveUserQuota = useCallback(
+    async (userId: string, displayName: string) => {
+      const n = parseInt(quotaDraft, 10);
+      if (Number.isNaN(n) || n < 0) {
+        setMsg('Quota must be a whole number ≥ 0 (0 = unlimited).');
+        setTimeout(() => setMsg(''), 3500);
+        return;
+      }
+      const r = await fetch(`${BACKEND}/api/admin/users/${encodeURIComponent(userId)}/quota`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ quota: n }),
+      });
+      if (r.ok) {
+        setQuotaEditUserId(null);
+        setMsg(`Quota updated to ${n === 0 ? 'Unlimited ∞' : n} for ${displayName}`);
+        setTimeout(() => setMsg(''), 3500);
+        await fetchUsers();
+      } else {
+        setMsg('Quota update failed');
+        setTimeout(() => setMsg(''), 4000);
+      }
+    },
+    [headers, quotaDraft, fetchUsers],
+  );
+
+  const startVoiceAsk = useCallback(() => {
+    const W = window as unknown as { SpeechRecognition?: new () => any; webkitSpeechRecognition?: new () => any };
+    const SR = W.SpeechRecognition || W.webkitSpeechRecognition;
+    if (!SR) {
+      setMsg('Voice input not supported in this browser.');
+      setTimeout(() => setMsg(''), 3500);
+      return;
+    }
+    const rec = new SR();
+    rec.lang = audLang.startsWith('hi') ? 'hi-IN' : 'en-IN';
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.onresult = (ev: any) => {
+      const t = ev.results[0]?.[0]?.transcript?.trim();
+      if (t) {
+        setAudQuestion(t);
+        if (/[\u0900-\u097F]/.test(t)) setAudLang('hi-IN');
+      }
+    };
+    rec.onerror = () => {
+      setMsg('Voice capture error');
+      setTimeout(() => setMsg(''), 3000);
+    };
+    rec.start();
+  }, [audLang]);
+
+  const submitAudioOracle = useCallback(async () => {
+    if (!token || !audProfileId || !audQuestion.trim()) {
+      setMsg('Pick a profile and enter a question.');
+      setTimeout(() => setMsg(''), 3000);
+      return;
+    }
+    setAudBusy(true);
+    setAudB64(null);
+    setAudText('');
+    try {
+      const r = await fetch(`${BACKEND}/api/admin/oracle/audio`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          question: audQuestion.trim(),
+          language: audLang,
+          profileId: audProfileId,
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((data as { message?: string }).message || `HTTP ${r.status}`);
+      setAudText(String(data.text || ''));
+      setAudB64(typeof data.audioBase64 === 'string' ? data.audioBase64 : null);
+      if (data.audioBase64 && audioRef.current) {
+        audioRef.current.src = `data:audio/wav;base64,${data.audioBase64}`;
+        audioRef.current.load();
+      }
+    } catch (e: unknown) {
+      setMsg((e as Error).message || 'Audio oracle failed');
+      setTimeout(() => setMsg(''), 5000);
+    } finally {
+      setAudBusy(false);
+    }
+  }, [token, headers, audProfileId, audQuestion, audLang]);
+
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    const onTime = () => setAudTime(el.currentTime);
+    const onDur = () => setAudDur(el.duration || 0);
+    const onPlay = () => setAudPlaying(true);
+    const onPause = () => setAudPlaying(false);
+    el.addEventListener('timeupdate', onTime);
+    el.addEventListener('loadedmetadata', onDur);
+    el.addEventListener('play', onPlay);
+    el.addEventListener('pause', onPause);
+    return () => {
+      el.removeEventListener('timeupdate', onTime);
+      el.removeEventListener('loadedmetadata', onDur);
+      el.removeEventListener('play', onPlay);
+      el.removeEventListener('pause', onPause);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (mergedProfileChoices.length && !audProfileId) {
+      const first = mergedProfileChoices[0];
+      if (first?.profile?.id) setAudProfileId(String(first.profile.id));
+    }
+  }, [mergedProfileChoices, audProfileId]);
+
   const openProfilesForUser = useCallback(
     async (user: any) => {
       if (!token) return;
@@ -1390,7 +1726,18 @@ export default function AdminDashboard() {
 
       {/* TABS */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #2a2a4a', paddingBottom: 0 }}>
-        {(['users', 'questions', 'cost', 'karma', 'mycharts', 'reports'] as const).map((t) => (
+        {(
+          [
+            'users',
+            'questions',
+            'cost',
+            'karma',
+            'mycharts',
+            'reports',
+            'quickchart',
+            'audiooracle',
+          ] as const
+        ).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -1403,7 +1750,10 @@ export default function AdminDashboard() {
               color: tab === t ? '#c9a84c' : '#666',
               fontWeight: tab === t ? 600 : 400,
               fontSize: 13,
-              textTransform: t === 'karma' || t === 'mycharts' ? 'none' : 'capitalize',
+              textTransform:
+                t === 'karma' || t === 'mycharts' || t === 'quickchart' || t === 'audiooracle'
+                  ? 'none'
+                  : 'capitalize',
               borderBottom: tab === t ? '2px solid #c9a84c' : '2px solid transparent',
             }}
           >
@@ -1417,10 +1767,161 @@ export default function AdminDashboard() {
                     ? 'Project Karma'
                     : t === 'mycharts'
                       ? 'My Charts'
-                      : 'Reports'}
+                      : t === 'quickchart'
+                        ? 'Quick Chart'
+                        : t === 'audiooracle'
+                          ? 'Audio Oracle'
+                          : 'Reports'}
           </button>
         ))}
       </div>
+
+      {tab === 'quickchart' && (
+        <div style={{ maxWidth: 720, color: '#ccc', fontSize: 14, lineHeight: 1.5 }}>
+          <p style={{ color: GOLD, fontWeight: 600, marginBottom: 12 }}>Quick Chart — Test Only</p>
+          <p style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
+            Creates a temporary nativity for Oracle testing. Purpose is tagged <strong>Test Only</strong>. Session-only data is cleared when you sign out from the main app.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Name</div>
+              <input value={qcName} onChange={(e) => setQcName(e.target.value)} style={qcInput} />
+            </label>
+            <label>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Gender</div>
+              <select value={qcGender} onChange={(e) => setQcGender(e.target.value)} style={qcInput}>
+                <option value="Prefer not to say">Prefer not to say</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+              </select>
+            </label>
+            <label>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>DOB</div>
+              <input type="date" value={qcDob} onChange={(e) => setQcDob(e.target.value)} style={qcInput} />
+            </label>
+            <label>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>TOB</div>
+              <input type="time" value={qcTob} onChange={(e) => setQcTob(e.target.value)} style={qcInput} />
+            </label>
+            <label style={{ gridColumn: '1 / -1' }}>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Place of Birth</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input value={qcPlace} onChange={(e) => setQcPlace(e.target.value)} placeholder="City, State, Country" style={{ ...qcInput, flex: 1 }} />
+                <button type="button" disabled={qcGeoBusy} onClick={() => void geocodeQuickChart()} style={qcBtn}>
+                  {qcGeoBusy ? '…' : 'Geocode'}
+                </button>
+              </div>
+            </label>
+            <label>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Latitude</div>
+              <input value={qcLat} onChange={(e) => setQcLat(e.target.value)} style={qcInput} />
+            </label>
+            <label>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Longitude</div>
+              <input value={qcLon} onChange={(e) => setQcLon(e.target.value)} style={qcInput} />
+            </label>
+            <label style={{ gridColumn: '1 / -1' }}>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Timezone offset (hours from UTC)</div>
+              <input value={qcTz} onChange={(e) => setQcTz(e.target.value)} style={qcInput} />
+            </label>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, cursor: 'pointer' }}>
+            <input type="checkbox" checked={qcSessionOnly} onChange={(e) => setQcSessionOnly(e.target.checked)} />
+            <span>Session only (do not save profile to database)</span>
+          </label>
+          <p style={{ fontSize: 11, color: '#666', marginTop: 8 }}>Uncheck to save permanently under your admin account (tagged created_by_admin).</p>
+          <button type="button" disabled={qcBusy} onClick={() => void submitQuickChart()} style={{ ...qcBtn, marginTop: 20, padding: '10px 20px', fontWeight: 700 }}>
+            {qcBusy ? 'Working…' : 'Create & open in Oracle'}
+          </button>
+        </div>
+      )}
+
+      {tab === 'audiooracle' && (
+        <div style={{ maxWidth: 640, color: '#ccc', fontSize: 14 }}>
+          <audio ref={audioRef} preload="metadata" style={{ display: 'none' }} />
+          <div style={{ color: GOLD, fontWeight: 700, marginBottom: 8 }}>🎙️ Audio Oracle [ADMIN ONLY]</div>
+          <label style={{ display: 'block', marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: '#888' }}>Profile</div>
+            <select
+              value={audProfileId}
+              onChange={(e) => setAudProfileId(e.target.value)}
+              style={{ ...qcInput, width: '100%', marginTop: 4 }}
+            >
+              {mergedProfileChoices.map((row) => (
+                <option key={row.key} value={row.profile?.id}>
+                  {row.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ display: 'block', marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: '#888' }}>Language</div>
+            <select value={audLang} onChange={(e) => setAudLang(e.target.value)} style={{ ...qcInput, width: '100%', marginTop: 4 }}>
+              {SARVAM_LANGS.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.label} ({l.code})
+                </option>
+              ))}
+            </select>
+          </label>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            <button type="button" onClick={startVoiceAsk} style={qcBtn}>
+              🎤 Ask by voice
+            </button>
+          </div>
+          <textarea
+            value={audQuestion}
+            onChange={(e) => setAudQuestion(e.target.value)}
+            placeholder="Type question…"
+            rows={3}
+            style={{ ...qcInput, width: '100%', resize: 'vertical' }}
+          />
+          <button type="button" disabled={audBusy} onClick={() => void submitAudioOracle()} style={{ ...qcBtn, marginTop: 10, fontWeight: 700 }}>
+            {audBusy ? '…' : '▶️ Get Audio Answer'}
+          </button>
+          {audB64 && (
+            <div style={{ marginTop: 20, padding: 14, borderRadius: 10, border: '1px solid #2a2a4a', background: '#12121a' }}>
+              <div style={{ fontSize: 12, color: GOLD, marginBottom: 8 }}>🔊 {audPlaying ? 'Playing response…' : 'Ready'}</div>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>
+                {formatAudTime(audTime)} / {formatAudTime(audDur || 0)}
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" style={qcBtn} onClick={() => audioRef.current?.play()}>
+                  ▶️
+                </button>
+                <button type="button" style={qcBtn} onClick={() => audioRef.current?.pause()}>
+                  ⏸
+                </button>
+                <button
+                  type="button"
+                  style={qcBtn}
+                  onClick={() => {
+                    if (audioRef.current) {
+                      audioRef.current.currentTime = 0;
+                      void audioRef.current.play();
+                    }
+                  }}
+                >
+                  🔄 Replay
+                </button>
+                <a
+                  href={audB64 ? `data:audio/wav;base64,${audB64}` : '#'}
+                  download="oracle-answer.wav"
+                  style={{ ...qcBtn, textDecoration: 'none', display: 'inline-block' }}
+                >
+                  📥
+                </a>
+              </div>
+            </div>
+          )}
+          <button type="button" onClick={() => setShowAudTranscript((s) => !s)} style={{ ...qcBtn, marginTop: 12 }}>
+            {showAudTranscript ? 'Hide transcript' : 'Show transcript'}
+          </button>
+          {showAudTranscript && audText && (
+            <pre style={{ marginTop: 10, whiteSpace: 'pre-wrap', fontSize: 12, color: '#bbb', background: '#0a0a12', padding: 12, borderRadius: 8 }}>{audText}</pre>
+          )}
+        </div>
+      )}
 
       {/* USERS TAB */}
       {tab === 'users' && (
@@ -1461,7 +1962,80 @@ export default function AdminDashboard() {
                       {profileCounts[u.id] ?? '—'}
                     </span>
                   </td>
-                  <td style={{ padding: '12px 14px', color: '#ddd' }}>{u.questionsUsed ?? 0}/{u.questionsLimit ?? 60}</td>
+                  <td style={{ padding: '12px 14px', color: '#ddd' }}>
+                    {(() => {
+                      const cap = typeof u.current_quota === 'number' ? u.current_quota : 60;
+                      const used = u.questionsUsed ?? 0;
+                      const unlimited = cap === 0;
+                      const label = unlimited ? `${used}/∞` : `${used}/${cap}`;
+                      const warn = !unlimited && cap > 0 && used / cap > 0.8;
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span>{label}</span>
+                            {unlimited && (
+                              <span
+                                style={{
+                                  background: 'rgba(201,169,110,0.22)',
+                                  color: GOLD,
+                                  fontSize: 10,
+                                  padding: '2px 8px',
+                                  borderRadius: 6,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                ∞ UNLIMITED
+                              </span>
+                            )}
+                            {warn && (
+                              <span
+                                style={{
+                                  background: 'rgba(180,50,50,0.35)',
+                                  color: '#ffb3b3',
+                                  fontSize: 10,
+                                  padding: '2px 8px',
+                                  borderRadius: 6,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {'>'}80%
+                              </span>
+                            )}
+                          </div>
+                          {quotaEditUserId === u.id ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <input
+                                value={quotaDraft}
+                                onChange={(e) => setQuotaDraft(e.target.value)}
+                                style={{ width: 64, padding: 6, borderRadius: 6, border: '1px solid #444', background: '#111', color: '#eee' }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void saveUserQuota(u.id, u.name || u.email)}
+                                style={{ ...qcBtn, padding: '6px 12px', fontSize: 12 }}
+                              >
+                                Save
+                              </button>
+                              <button type="button" onClick={() => setQuotaEditUserId(null)} style={{ fontSize: 12, color: '#888', background: 'none', border: 'none', cursor: 'pointer' }}>
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setQuotaEditUserId(u.id);
+                                setQuotaDraft(String(cap));
+                              }}
+                              style={{ fontSize: 12, color: GOLD, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                            >
+                              Edit Quota ✏️
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </td>
                   <td style={{ padding: '12px 14px' }}>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                       <button

@@ -34,8 +34,9 @@ export class GeminiController {
       const user = await this.usersService.findById(userId);
       if (!user) throw new UnauthorizedException('User not found');
       if (user.status !== 'approved') throw new ForbiddenException('Account not approved');
-      if (user.questionsUsed >= user.questionsLimit) {
-        throw new ForbiddenException('Question limit reached (' + user.questionsLimit + ' questions)');
+      if (!this.usersService.hasQuotaRemaining(user)) {
+        const cap = this.usersService.getEffectiveQuota(user);
+        throw new ForbiddenException('Question limit reached (' + cap + ' questions)');
       }
     }
     const result = await this.geminiService.generateContent(body, userId);
@@ -54,8 +55,9 @@ export class GeminiController {
       const user = await this.usersService.findById(userId);
       if (!user) throw new UnauthorizedException('User not found');
       if (user.status !== 'approved') throw new ForbiddenException('Account not approved');
-      if (user.questionsUsed >= user.questionsLimit) {
-        throw new ForbiddenException('Question limit reached (' + user.questionsLimit + ' questions)');
+      if (!this.usersService.hasQuotaRemaining(user)) {
+        const cap = this.usersService.getEffectiveQuota(user);
+        throw new ForbiddenException('Question limit reached (' + cap + ' questions)');
       }
       const recentQs = await this.questionsService.getRecentByUser(userId, 5);
       const pastContext = recentQs

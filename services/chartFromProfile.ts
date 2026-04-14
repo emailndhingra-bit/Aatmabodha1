@@ -21,7 +21,7 @@ export type ProfileChartInput = {
   timezone?: string | number | null;
 };
 
-function convertToISTForAPI(dob: string, tob: string, timezoneOffset: number) {
+export function convertToISTForAPI(dob: string, tob: string, timezoneOffset: number) {
   const [year, month, day] = dob.split('-').map(Number);
   const [hour, minute] = tob.split(':').map(Number);
   const utcDate = new Date(Date.UTC(year, month - 1, day, hour, minute));
@@ -162,6 +162,29 @@ export async function fetchAnalysisForProfile(profile: ProfileChartInput): Promi
   });
   if (!res.ok) throw new Error('Chart API returned an error.');
   let parsed: any = await res.json();
+  return buildAnalysisResultFromChartJson(parsed, profile);
+}
+
+/** Build the same `AnalysisResult` as the chart API + profile metadata (used by admin quick-chart). */
+export function buildAnalysisResultFromChartJson(rawChart: any, profile: ProfileChartInput): AnalysisResult {
+  const dobVal = profile.dateOfBirth;
+  const tobVal = profile.timeOfBirth;
+  const latVal =
+    profile.latitude != null && profile.latitude !== ''
+      ? String(profile.latitude)
+      : '';
+  const lonVal =
+    profile.longitude != null && profile.longitude !== ''
+      ? String(profile.longitude)
+      : '';
+  const tzRaw =
+    profile.timezone != null && profile.timezone !== '' ? parseFloat(String(profile.timezone)) : Number.NaN;
+  const tzVal = Number.isFinite(tzRaw) ? tzRaw : 5.5;
+  const nameVal = profile.name || 'Profile';
+  const pobVal = profile.placeOfBirth || '';
+  const genderVal = profile.gender || 'Prefer not to say';
+
+  let parsed: any = rawChart && typeof rawChart === 'object' ? rawChart : {};
   parsed = enrichRawData(parsed, tzVal, lonVal);
 
   const dCharts = Object.keys(parsed).reduce((acc: any, key: string) => {
@@ -226,3 +249,4 @@ export async function fetchAnalysisForProfile(profile: ProfileChartInput): Promi
 
   return result;
 }
+

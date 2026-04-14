@@ -8,6 +8,7 @@ import { ChartService } from './chart.service';
   imports: [TypeOrmModule.forFeature([ChartRequestEntity])],
   controllers: [ChartController],
   providers: [ChartService],
+  exports: [ChartService],
 })
 export class ChartModule {}
 

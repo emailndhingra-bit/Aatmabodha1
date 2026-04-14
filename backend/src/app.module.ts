@@ -9,12 +9,16 @@ import { ProfilesModule } from './profiles/profiles.module';
 import { QuestionsModule } from './questions/questions.module';
 import { ReportsModule } from './reports/reports.module';
 import { ChartsModule } from './charts/charts.module';
+import { AdminModule } from './admin/admin.module';
+import { FaqBotModule } from './faq-bot/faq-bot.module';
+import { validateEnv } from './config/env.validation';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env', '.env.local'],
+      validate: validateEnv,
     }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
@@ -40,6 +44,8 @@ import { ChartsModule } from './charts/charts.module';
     QuestionsModule,
     ReportsModule,
     ChartsModule,
+    AdminModule,
+    FaqBotModule,
   ],
 })
 export class AppModule {}

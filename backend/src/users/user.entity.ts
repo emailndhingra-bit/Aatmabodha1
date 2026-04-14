@@ -32,6 +32,10 @@ export class User {
   @Column({ default: 60 })
   questionsLimit: number;
 
+  /** Admin override: null = use default cap (60). 0 = unlimited. */
+  @Column({ type: 'int', nullable: true, name: 'custom_quota' })
+  customQuota: number | null;
+
   @Column({ nullable: true })
   googleId: string;
 

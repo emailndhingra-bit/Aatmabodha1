@@ -35,6 +35,31 @@ export class ProfilesService {
     return this.profilesRepository.findOne({ where: { id: profileId, userId } });
   }
 
+  async findById(profileId: string): Promise<Profile | null> {
+    return this.profilesRepository.findOne({ where: { id: profileId } });
+  }
+
+  /** Admin quick-chart permanent save — bypasses the 2-profile limit for normal users. */
+  async createAdminQuickProfile(
+    adminUserId: string,
+    data: Pick<Profile, 'name' | 'gender' | 'dateOfBirth' | 'timeOfBirth' | 'placeOfBirth' | 'latitude' | 'longitude'> & {
+      timezone?: number | string | null;
+    },
+  ): Promise<Profile> {
+    const tz =
+      data.timezone !== undefined && data.timezone !== null && String(data.timezone) !== ''
+        ? String(data.timezone)
+        : '5.5';
+    const profile = this.profilesRepository.create({
+      ...data,
+      timezone: tz,
+      userId: adminUserId,
+      createdByAdmin: true,
+      purpose: 'Test Only',
+    });
+    return this.profilesRepository.save(profile);
+  }
+
   /** Admin: profile counts keyed by userId */
   async countProfilesByUser(): Promise<Record<string, number>> {
     const rows = await this.profilesRepository
