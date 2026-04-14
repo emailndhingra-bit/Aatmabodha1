@@ -2,8 +2,13 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import * as fs from 'fs';
+import * as path from 'path';
 
 async function bootstrap() {
+  const uploadsReports = path.join(process.cwd(), 'uploads', 'reports');
+  fs.mkdirSync(uploadsReports, { recursive: true });
+
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({

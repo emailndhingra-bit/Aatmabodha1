@@ -19,15 +19,7 @@ import {
   Filler,
 } from 'chart.js';
 import { Doughnut, Bar as ChartJsBar, Line, Pie, Chart } from 'react-chartjs-2';
-import {
-  BarChart,
-  Bar as RechartsBar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
+import AdminReportsHub from './AdminReportsHub';
 
 ChartJS.register(
   ArcElement,
@@ -118,13 +110,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   TIMING: '#888780',
   GENERAL: '#444441',
   VEHICLE: '#5B8FC7',
-};
-
-const REPORT_TYPE_BADGE: Record<string, { bg: string; color: string }> = {
-  life_book: { bg: 'rgba(139, 92, 246, 0.28)', color: '#d8b4fe' },
-  hidden_gems: { bg: 'rgba(245, 158, 11, 0.22)', color: '#fcd34d' },
-  daily_forecast: { bg: 'rgba(59, 130, 246, 0.22)', color: '#93c5fd' },
-  btr: { bg: 'rgba(34, 197, 94, 0.22)', color: '#86efac' },
 };
 
 const ANALYTICS_CATEGORIES = [
@@ -919,21 +904,6 @@ export default function AdminDashboard() {
   const [showAudTranscript, setShowAudTranscript] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const [reportStats, setReportStats] = useState<{
-    totalReports: number;
-    todayCount: number;
-    weekCount: number;
-    countByType: Record<string, number>;
-  } | null>(null);
-  const [reportList, setReportList] = useState<{
-    items: any[];
-    total: number;
-    page: number;
-    limit: number;
-  } | null>(null);
-  const [reportsPage, setReportsPage] = useState(1);
-  const [reportTypeFilter, setReportTypeFilter] = useState<string>('');
-  const [reportsLoading, setReportsLoading] = useState(false);
   const [adminQuestionRows, setAdminQuestionRows] = useState<any[]>([]);
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [analyticsUpdatedAt, setAnalyticsUpdatedAt] = useState<number | null>(null);
@@ -1048,65 +1018,6 @@ export default function AdminDashboard() {
     if (tab !== 'questions') return;
     void fetchAdminQuestions();
   }, [tab]);
-
-  const fetchReportStats = async () => {
-    const r = await fetch(`${BACKEND}/api/admin/reports/stats`, { headers });
-    if (!r.ok) return;
-    setReportStats(await r.json());
-  };
-
-  const fetchReportList = async () => {
-    setReportsLoading(true);
-    try {
-      const qs = new URLSearchParams({ page: String(reportsPage), limit: '50' });
-      if (reportTypeFilter) qs.set('type', reportTypeFilter);
-      const r = await fetch(`${BACKEND}/api/admin/reports?${qs}`, { headers });
-      if (r.ok) setReportList(await r.json());
-    } finally {
-      setReportsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (tab !== 'reports') return;
-    fetchReportStats();
-  }, [tab]);
-
-  useEffect(() => {
-    if (tab !== 'reports') return;
-    fetchReportList();
-  }, [tab, reportsPage, reportTypeFilter]);
-
-  const mostPopularReportType = useMemo(() => {
-    const c = reportStats?.countByType;
-    if (!c || !Object.keys(c).length) return '—';
-    let best = '';
-    let max = -1;
-    for (const [k, v] of Object.entries(c)) {
-      if (v > max) {
-        max = v;
-        best = k;
-      }
-    }
-    return best || '—';
-  }, [reportStats]);
-
-  const reportChartData = useMemo(() => {
-    const c = reportStats?.countByType ?? {};
-    return Object.entries(c)
-      .map(([reportType, count]) => ({ reportType, count }))
-      .sort((a, b) => a.reportType.localeCompare(b.reportType));
-  }, [reportStats]);
-
-  const reportPagination = useMemo(() => {
-    if (!reportList) return { totalPages: 1, canNext: false, canPrev: reportsPage > 1 };
-    const totalPages = Math.max(1, Math.ceil(reportList.total / reportList.limit));
-    return {
-      totalPages,
-      canNext: reportsPage < totalPages,
-      canPrev: reportsPage > 1,
-    };
-  }, [reportList, reportsPage]);
 
   const act = async (id: string, action: 'approve' | 'reject' | 'remove') => {
     const url =
@@ -1771,7 +1682,7 @@ export default function AdminDashboard() {
                         ? 'Quick Chart'
                         : t === 'audiooracle'
                           ? 'Audio Oracle'
-                          : 'Reports'}
+                          : 'Reports Hub'}
           </button>
         ))}
       </div>
@@ -3622,155 +3533,8 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* REPORTS TAB */}
-      {tab === 'reports' && (
-        <div>
-          <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-            {[
-              { label: 'Total Reports', val: reportStats !== null ? reportStats.totalReports : '—' },
-              { label: 'Today', val: reportStats !== null ? reportStats.todayCount : '—' },
-              { label: 'This Week', val: reportStats !== null ? reportStats.weekCount : '—' },
-              { label: 'Most Popular Type', val: reportStats !== null ? mostPopularReportType : '—' },
-            ].map(s => (
-              <div key={s.label} style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 10, padding: '12px 18px', minWidth: 130 }}>
-                <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>{s.label}</div>
-                <div style={{ fontSize: 22, fontWeight: 600, color: '#c9a84c' }}>{s.val}</div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 10, padding: 16, marginBottom: 20 }}>
-            <h3 style={{ color: '#c9a84c', fontSize: 14, marginBottom: 12 }}>Reports by type</h3>
-            {reportChartData.length === 0 ? (
-              <div style={{ color: '#666', padding: 32, textAlign: 'center', fontSize: 13 }}>No report counts yet.</div>
-            ) : (
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={reportChartData} margin={{ top: 8, right: 12, left: 4, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
-                  <XAxis dataKey="reportType" tick={{ fill: '#888', fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={56} />
-                  <YAxis tick={{ fill: '#888', fontSize: 11 }} allowDecimals={false} />
-                  <Tooltip
-                    contentStyle={{ background: '#1a1a2e', border: '1px solid #2a2a4a', borderRadius: 8, color: '#ccc' }}
-                    labelStyle={{ color: '#c9a84c' }}
-                  />
-                  <RechartsBar dataKey="count" fill="#c9a84c" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-            <label style={{ fontSize: 12, color: '#888' }}>Type</label>
-            <select
-              value={reportTypeFilter}
-              onChange={e => {
-                setReportTypeFilter(e.target.value);
-                setReportsPage(1);
-              }}
-              style={{
-                background: '#1a1a2e',
-                color: '#ddd',
-                border: '1px solid #2a2a4a',
-                borderRadius: 8,
-                padding: '8px 12px',
-                fontSize: 13,
-                minWidth: 180,
-              }}
-            >
-              <option value="">All</option>
-              <option value="life_book">life_book</option>
-              <option value="hidden_gems">hidden_gems</option>
-              <option value="daily_forecast">daily_forecast</option>
-              <option value="btr">btr</option>
-            </select>
-          </div>
-
-          {reportsLoading && !reportList ? (
-            <div style={{ color: '#666', padding: 20, fontSize: 13 }}>Loading reports…</div>
-          ) : (
-            <>
-              {reportsLoading && reportList && (
-                <div style={{ fontSize: 11, color: '#666', marginBottom: 8 }}>Refreshing…</div>
-              )}
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                  <thead>
-                    <tr style={{ background: '#1a1a2e' }}>
-                      {['Time', 'User Hash', 'Profile', 'Type', 'Title', 'Language'].map(h => (
-                        <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: '#888', fontWeight: 500, borderBottom: '1px solid #2a2a4a' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(reportList?.items ?? []).map((row: any) => {
-                      const badge = REPORT_TYPE_BADGE[row.reportType] ?? { bg: '#2a2a4a', color: '#ccc' };
-                      const uid = String(row.userId ?? '');
-                      return (
-                        <tr key={row.id} style={{ borderBottom: '1px solid #1a1a2e' }}>
-                          <td style={{ padding: '10px 12px', color: '#666', fontSize: 11, whiteSpace: 'nowrap' }}>
-                            {row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}
-                          </td>
-                          <td style={{ padding: '10px 12px', color: '#888', fontFamily: 'monospace' }}>{uid.slice(0, 8)}</td>
-                          <td style={{ padding: '10px 12px', color: '#ccc' }}>{row.profileName ?? '—'}</td>
-                          <td style={{ padding: '10px 12px' }}>
-                            <span style={{ background: badge.bg, color: badge.color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>
-                              {row.reportType}
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 12px', color: '#ccc', maxWidth: 280 }}>{row.title ?? '—'}</td>
-                          <td style={{ padding: '10px 12px', color: '#aaa' }}>{row.language ?? '—'}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {(!reportList?.items || reportList.items.length === 0) && !reportsLoading && (
-                <div style={{ color: '#666', padding: 16, fontSize: 13 }}>No reports in this view.</div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, flexWrap: 'wrap', gap: 12 }}>
-                <div style={{ fontSize: 12, color: '#666' }}>
-                  Page {reportList?.page ?? reportsPage} · {reportList?.total ?? 0} total
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    type="button"
-                    disabled={!reportPagination.canPrev || reportsLoading}
-                    onClick={() => setReportsPage(p => Math.max(1, p - 1))}
-                    style={{
-                      background: !reportPagination.canPrev ? '#2a2a3e' : '#1a1a3e',
-                      color: !reportPagination.canPrev ? '#555' : '#c9a84c',
-                      border: '1px solid #2a2a4a',
-                      borderRadius: 8,
-                      padding: '8px 16px',
-                      cursor: !reportPagination.canPrev ? 'not-allowed' : 'pointer',
-                      fontSize: 13,
-                    }}
-                  >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    disabled={reportsLoading || !reportList || !reportPagination.canNext}
-                    onClick={() => setReportsPage(p => p + 1)}
-                    style={{
-                      background: !reportPagination.canNext || !reportList ? '#2a2a3e' : '#1a1a3e',
-                      color: !reportPagination.canNext || !reportList ? '#555' : '#c9a84c',
-                      border: '1px solid #2a2a4a',
-                      borderRadius: 8,
-                      padding: '8px 16px',
-                      cursor: !reportPagination.canNext || !reportList ? 'not-allowed' : 'pointer',
-                      fontSize: 13,
-                    }}
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      {/* REPORTS HUB */}
+      {tab === 'reports' && <AdminReportsHub backend={BACKEND} headers={headers} />}
 
       {profileModal && (
         <div

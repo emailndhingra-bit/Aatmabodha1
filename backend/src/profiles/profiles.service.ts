@@ -39,6 +39,40 @@ export class ProfilesService {
     return this.profilesRepository.findOne({ where: { id: profileId } });
   }
 
+  /** Admin Reports Hub — searchable directory of nativities. */
+  async listProfilesForReportsHub(search?: string): Promise<
+    Array<{
+      id: string;
+      name: string;
+      dateOfBirth: string;
+      timeOfBirth: string;
+      placeOfBirth: string | null;
+      userId: string;
+      ownerEmail: string | null;
+    }>
+  > {
+    const qb = this.profilesRepository
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.user', 'user')
+      .orderBy('p.createdAt', 'DESC')
+      .take(400);
+    if (search?.trim()) {
+      qb.andWhere('(p.name ILIKE :s OR COALESCE(p.placeOfBirth, \'\') ILIKE :s)', {
+        s: `%${search.trim()}%`,
+      });
+    }
+    const list = await qb.getMany();
+    return list.map((p) => ({
+      id: p.id,
+      name: p.name,
+      dateOfBirth: p.dateOfBirth,
+      timeOfBirth: p.timeOfBirth,
+      placeOfBirth: p.placeOfBirth ?? null,
+      userId: p.userId,
+      ownerEmail: p.user?.email ?? null,
+    }));
+  }
+
   /** Admin quick-chart permanent save — bypasses the 2-profile limit for normal users. */
   async createAdminQuickProfile(
     adminUserId: string,

@@ -1,0 +1,4 @@
+# Required Python PDF stack (Reports Hub uses Node + Puppeteer by default).
+reportlab
+weasyprint
+pillow
