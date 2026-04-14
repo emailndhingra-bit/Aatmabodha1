@@ -1678,11 +1678,13 @@ export default function AdminDashboard() {
                     ? 'Project Karma'
                     : t === 'mycharts'
                       ? 'My Charts'
-                      : t === 'quickchart'
-                        ? 'Quick Chart'
-                        : t === 'audiooracle'
-                          ? 'Audio Oracle'
-                          : 'Reports Hub'}
+                      : t === 'reports'
+                        ? 'Reports'
+                        : t === 'quickchart'
+                          ? 'Quick Chart'
+                          : t === 'audiooracle'
+                            ? 'Audio Oracle'
+                            : String(t)}
           </button>
         ))}
       </div>
