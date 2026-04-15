@@ -19,7 +19,9 @@ export class GeminiService {
   private readonly inflightRequests = new Map<string, Promise<any>>();
   private readonly contextCache = new Map<string, { name: string; expiresAt: number }>();
 
-  constructor(private questionsService: QuestionsService) {}
+  constructor(private questionsService: QuestionsService) {
+    this.contextCache.clear(); // V4.6 cache bust
+  }
 
   /**
    * Context-cache key must stay stable across requests (no dates / transit blobs in the key).
@@ -41,7 +43,8 @@ export class GeminiService {
     let stableContent =
       cut > 0 ? systemInstruction.substring(0, cut) : systemInstruction;
     stableContent = stableContent.replace(/\b\d{4}-\d{2}-\d{2}\b/g, '__DATE__');
-    const prefix = `${userId ?? 'anon'}\x1e${(natalFingerprint ?? '').trim()}\x1e`;
+    const ORACLE_VERSION = 'v4.6';
+    const prefix = `${userId ?? 'anon'}\x1e${(natalFingerprint ?? '').trim()}\x1e${ORACLE_VERSION}\x1e`;
     return createHash('sha256')
       .update(prefix + stableContent.substring(0, 200))
       .digest('hex');
