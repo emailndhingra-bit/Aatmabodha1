@@ -278,22 +278,68 @@ export class ReportGenerationService {
     const html = this.pdf.compileFinalPDF(htmlParts);
     let pdfBuffer: Buffer;
     try {
-      const puppeteer = await import('puppeteer');
-      const browser = await puppeteer.default.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-      });
-      try {
-        const page = await browser.newPage();
-        await page.setContent(html, { waitUntil: 'networkidle0', timeout: 120_000 });
-        const buf = await page.pdf({ format: 'A4', printBackground: true, margin: { top: '12mm', bottom: '14mm', left: '12mm', right: '12mm' } });
-        pdfBuffer = Buffer.from(buf);
-      } finally {
-        await browser.close();
+      if (process.env.NODE_ENV === 'production') {
+        const chromium = await import('@sparticuz/chromium');
+        const executablePath = await chromium.default.executablePath();
+        const puppeteerModule = await import('puppeteer-core');
+        const browser = await puppeteerModule.default.launch({
+          args: chromium.default.args,
+          defaultViewport: chromium.default.defaultViewport,
+          executablePath,
+          headless: true,
+        });
+        try {
+          const page = await browser.newPage();
+          await page.setContent(html, {
+            waitUntil: 'networkidle0',
+            timeout: 120_000,
+          });
+          const buf = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: {
+              top: '12mm',
+              bottom: '14mm',
+              left: '12mm',
+              right: '12mm',
+            },
+          });
+          pdfBuffer = Buffer.from(buf);
+        } finally {
+          await browser.close();
+        }
+      } else {
+        const puppeteer = await import('puppeteer');
+        const browser = await puppeteer.default.launch({
+          headless: true,
+          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+        });
+        try {
+          const page = await browser.newPage();
+          await page.setContent(html, {
+            waitUntil: 'networkidle0',
+            timeout: 120_000,
+          });
+          const buf = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: {
+              top: '12mm',
+              bottom: '14mm',
+              left: '12mm',
+              right: '12mm',
+            },
+          });
+          pdfBuffer = Buffer.from(buf);
+        } finally {
+          await browser.close();
+        }
       }
     } catch (e) {
       this.logger.error('Puppeteer PDF failed', e as Error);
-      throw new BadRequestException('PDF generation failed. Is Chromium available on this host?');
+      throw new BadRequestException(
+        'PDF generation failed. Error: ' + (e as Error).message,
+      );
     }
 
     const dir = path.join(process.cwd(), 'uploads', 'reports');
