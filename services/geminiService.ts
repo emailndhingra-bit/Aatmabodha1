@@ -1136,11 +1136,36 @@ export const generateCompactOneLiner = (db: any): string => {
                 if (k.includes('planet')) badPlanets = v;
             });
         }
-        const tRes = db.exec("SELECT planet, sign FROM current_transits");
+        const tRes = db.exec(
+            "SELECT planet, sign FROM current_transits"
+        );
+        const transitBavRes = db.exec(`
+    SELECT ct.planet, ct.sign,
+           ba.house_number, ba.points
+    FROM current_transits ct
+    LEFT JOIN bhinna_ashtakvarga ba
+    ON ct.planet = ba.planet
+    ORDER BY ct.planet, ba.house_number
+  `);
+        const transitBavMap: Record<string, string[]> = {};
+        if (transitBavRes.length > 0 &&
+            transitBavRes[0].values) {
+            transitBavRes[0].values.forEach((r: any[]) => {
+                if (!transitBavMap[r[0]])
+                    transitBavMap[r[0]] = [];
+                if (r[2] != null)
+                    transitBavMap[r[0]].push(
+                        `H${r[2]}:${r[3]}${Number(r[3]) >= 4 ? '✓' : ''}`
+                    );
+            });
+        }
         let transitsStr = "";
         if (tRes.length > 0 && tRes[0].values) transitsStr = tRes[0].values.map((r: any[]) => `${r[0]}:${r[1]}`).join(' | ');
+        const transitBavStr = Object.entries(transitBavMap)
+            .map(([p, v]) => `${p}[${v.join(',')}]`)
+            .join(' | ');
         console.log("TRANSITS CHECK:", transitsStr);
-        return `Today:[${today}]\nTRANSITS: ${transitsStr}\nLagna:[${lagna}] Rasi:[${rasi}] Nak:[${nak}] NakLord:[${nakLord}]\nGana:[${gana}] Nadi:[${nadi}] Paya:[${paya}] AK:${akStr}\nPLANETS: ${planetsStr}\nSHADBHALA: ${shadStr}\nAVASTHA: ${avasthaStr}\nDASHA: ${dashaStr}\nSAV: ${savStr}\nBAV(planet-house scores,≥4=delivers): ${bavStr}\nWILLPOWER_SCORE: ${wpStr}\n(Formula: 3rdHouseSAV×0.5 + 1.5×MarsShadbala.\n>18.50=strong free will overrides fate |\n12-18.50=mixed | <12=fate dominant)\nFP: Lucky#[${luckyNum}] Days:[${luckyDays}] Stone:[${luckyStone}] Metal:[${luckyMetal}]\nGH: BadDay:[${badDay}] BadNak:[${badNak}] BadPlanets:[${badPlanets}]\nCHALIT_SHIFTS:${chalitStr}\nNBRY_CANCELLED:${nbryStr}`;
+        return `Today:[${today}]\nTRANSITS: ${transitsStr}\nTRANSIT_BAV(planet BAV in all houses, ✓=≥4 delivers): ${transitBavStr}\nLagna:[${lagna}] Rasi:[${rasi}] Nak:[${nak}] NakLord:[${nakLord}]\nGana:[${gana}] Nadi:[${nadi}] Paya:[${paya}] AK:${akStr}\nPLANETS: ${planetsStr}\nSHADBHALA: ${shadStr}\nAVASTHA: ${avasthaStr}\nDASHA: ${dashaStr}\nSAV: ${savStr}\nBAV(planet-house scores,≥4=delivers): ${bavStr}\nWILLPOWER_SCORE: ${wpStr}\n(Formula: 3rdHouseSAV×0.5 + 1.5×MarsShadbala.\n>18.50=strong free will overrides fate |\n12-18.50=mixed | <12=fate dominant)\nFP: Lucky#[${luckyNum}] Days:[${luckyDays}] Stone:[${luckyStone}] Metal:[${luckyMetal}]\nGH: BadDay:[${badDay}] BadNak:[${badNak}] BadPlanets:[${badPlanets}]\nCHALIT_SHIFTS:${chalitStr}\nNBRY_CANCELLED:${nbryStr}`;
     } catch (e) {
         console.error("Error generating compact one liner", e);
         return "";
