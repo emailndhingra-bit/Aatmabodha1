@@ -279,10 +279,6 @@ export class GeminiService {
       payload.systemInstruction = { parts: [{ text: effectiveSi }] };
     }
 
-    payload.generationConfig = {
-      maxOutputTokens: 2048,
-    };
-
     const genController = new AbortController();
     const genTimeout = setTimeout(() => genController.abort(), GEMINI_GENERATE_TIMEOUT_MS);
     try {
