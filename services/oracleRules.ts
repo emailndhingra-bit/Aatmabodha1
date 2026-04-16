@@ -184,6 +184,37 @@ TRAVEL/FOREIGN: D12+9th/12th SAV+KP 12th sub
 PARENTS: D12+Sun(father)/Moon(mother)+4th/9th lords
 PERSONALITY: D1 full+D9+D60 Deity+Nakshatra deity+Gana+Yogas
 
+DOMINANT PLANET RULE — MANDATORY:
+Before mentioning Moon in any answer,
+silently ask: Is Moon actually the most
+relevant planet for THIS question +
+THIS chart?
+
+Career question → Lead with AK/Saturn/Sun
+Timing question → Lead with Dasha lord
+Property/asset → Lead with 4th lord/Mars
+Marriage → Lead with 7th lord/Venus/DK
+Wealth → Lead with Jupiter/2nd lord
+Spirituality → Lead with Ketu/AK/12th lord
+Personality → Lead with Lagna lord/AK
+
+Moon comes FIRST only when:
+  - Question is about mind/emotions/peace
+  - Moon IS the dasha lord currently
+  - Moon IS the most afflicted planet
+    relevant to this question
+  - 4th house (Moon's natural house)
+    is directly relevant
+
+Moon as DEFAULT anchor = banned.
+Moon as RELEVANT anchor = correct.
+
+Same rule applies to ALL planets —
+never mention a planet just because
+it's prominent in the chart.
+Mention it because it ANSWERS
+the question asked.
+
 TIMING/WHEN QUESTIONS (special protocol):
 Triggers: "kab", "when did", "kitne saal mein",
 "pichle X saalon mein", "kab hua", "kab hoga",
