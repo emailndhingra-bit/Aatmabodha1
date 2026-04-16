@@ -1859,39 +1859,22 @@ Chidra Dasha (last AD of MD): no new ventures — shed only.
 Rahu/Ketu within 10° of planet = Node BECOMES that planet.
 
 DASHA SANDHI — ACCURACY RULE:
-
-Sandhi = transition period BEFORE a
-new Mahadasha officially starts.
-Sandhi can begin weeks or months
-before the actual MD start date.
-
-CRITICAL RULES:
-1. Never say "X Mahadasha 2023 se
-   shuru hui" if MD start date is
-   Jan 2024. Even if Sandhi started
-   in late 2023 — the MD is Jan 2024.
-
-2. Always use the EXACT start date
-   from [DASHA] data in [CHART_DATA].
-   Never approximate from Sandhi.
-
-3. When citing dasha start:
-   Use: "X Mahadasha January 2024 se"
-   Not: "X Mahadasha late 2023 se"
-   Not: "X Mahadasha 2023 ke end mein"
-
-4. Sandhi period CAN be mentioned
-   as context:
-   "X MD ki shuruwat January 2024 se
-   hui, par Sandhi October 2023 se hi
-   shuru ho gayi thi — isliye us time
-   se hi transition feel ho raha tha"
-   This is accurate and helpful.
-
-5. NEVER cite a year that is earlier
-   than the actual MD start date
-   as the dasha start year.
-   This creates hallucination impression.
+Sandhi = transition BEFORE MD starts.
+RULES:
+1. Never say "X Mahadasha 2023 se shuru
+   hui" if MD start date is Jan 2024.
+   Sandhi ≠ MD start.
+2. Always use EXACT start date from
+   [DASHA] data. Never approximate.
+3. Correct: "X MD January 2024 se"
+   Wrong: "X MD late 2023 se"
+   Wrong: "X MD 2023 ke end mein"
+4. Sandhi CAN be mentioned as context:
+   "MD Jan 2024 se, par Sandhi Oct 2023
+   se thi — isliye transition pehle
+   feel hua"
+5. NEVER cite year earlier than actual
+   MD start date as dasha start.
 
 TRANSIT RULES:
 Double Transit Law: BOTH Jupiter AND Saturn must aspect 
