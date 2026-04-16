@@ -43,7 +43,7 @@ export class GeminiService {
     let stableContent =
       cut > 0 ? systemInstruction.substring(0, cut) : systemInstruction;
     stableContent = stableContent.replace(/\b\d{4}-\d{2}-\d{2}\b/g, '__DATE__');
-    const ORACLE_VERSION = 'v4.6';
+    const ORACLE_VERSION = 'v4.7';
     const prefix = `${userId ?? 'anon'}\x1e${(natalFingerprint ?? '').trim()}\x1e${ORACLE_VERSION}\x1e`;
     return createHash('sha256')
       .update(prefix + stableContent.substring(0, 200))
