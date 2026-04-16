@@ -279,10 +279,6 @@ export class GeminiService {
       payload.systemInstruction = { parts: [{ text: effectiveSi }] };
     }
 
-    payload.generationConfig = {
-      maxOutputTokens: 2048,
-    };
-
     const genController = new AbortController();
     const genTimeout = setTimeout(() => genController.abort(), GEMINI_GENERATE_TIMEOUT_MS);
     try {
@@ -292,7 +288,12 @@ export class GeminiService {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: genController.signal,
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            ...payload,
+            generationConfig: {
+              maxOutputTokens: 8192,
+            },
+          }),
         },
       );
       const data = await res.json();
