@@ -1072,6 +1072,16 @@ export const generateCompactOneLiner = (db: any): string => {
             }
         }
         const pRes = db.exec(`SELECT planet_name, D1_Rashi_house, D1_Rashi_retro, D1_Rashi_avastha, D1_Rashi_pada, D1_Rashi_nakshatra, D1_Rashi_jamini, shadbala_ratio, D1_Rashi_sign, D1_Rashi_status, Co_Tenants, D1_Rashi_yogas, D1_Rashi_yoga_bhangas, D1_Rashi_lord, D1_Rashi_houses_owned, D1_Rashi_is_sandhi, Vargottama FROM planets WHERE planet_name != 'Lagna'`);
+        const aspectRes = db.exec(`
+    SELECT planet_name, Aspects 
+    FROM planets 
+    WHERE Aspects IS NOT NULL 
+    AND Aspects != ''
+    AND planet_name NOT IN ('Lagna')
+  `);
+        const aspectStr = aspectRes[0]?.values
+            ?.map((r: any[]) => `${r[0]}→H${r[1]}`)
+            .join(' | ') ?? '';
         let planetsStr = "";
         if (pRes.length > 0 && pRes[0].values) {
             planetsStr = pRes[0].values.map((r: any[]) => `${r[0]}:H${r[1]}(${r[8]||''})${r[2]?'R':''} ${r[9]||''} ${r[3]||''} Nak:${r[4]}-P${r[5]} Shad:${r[7]||''} JK:${r[6]||''}${r[10]?' WITH:'+r[10]:''}${r[11]?' YOGAS:'+r[11]:''}${r[12]&&r[12]!='No'?' YOGA_BHANGA:'+r[12]:''}${r[13]?' LORD:'+r[13]:''}${r[14]?' OWNS:H'+r[14]:''}${r[15]&&r[15]==1?' SANDHI':''}${r[16]&&r[16]==1?' VARGOTTAMA':''}`).join(' | ');
@@ -1113,6 +1123,12 @@ export const generateCompactOneLiner = (db: any): string => {
         if (savRes.length > 0 && savRes[0].values) savStr = savRes[0].values.map((r: any[]) => `H${r[0]}:${r[1]}`).join(' ');
         const wpRes = db.exec(`SELECT value FROM special_points WHERE point_name LIKE '%Willpower%' OR point_name LIKE '%Will Power%' LIMIT 1`);
         const wpStr = wpRes[0]?.values?.[0]?.[0] || "";
+        const bbRes = db.exec(`SELECT value FROM special_points WHERE point_name LIKE '%Bhrigu%' LIMIT 1`);
+        const bbStr = bbRes[0]?.values?.[0]?.[0] || '';
+
+        const idRes = db.exec(`SELECT value FROM special_points WHERE point_name LIKE '%Ishta%' OR point_name LIKE '%ishta%' LIMIT 1`);
+        const idStr = idRes[0]?.values?.[0]?.[0] || '';
+
         const chalitRes = db.exec(`SELECT planet, from_house_d1, to_house_chalit FROM planet_shifts`);
         const chalitStr = chalitRes[0]?.values?.map((r:any[]) => `${r[0]}:H${r[1]}→H${r[2]}`).join(' | ') || "";
         const fpRes = db.exec("SELECT key, value FROM favourable_points");
@@ -1165,7 +1181,7 @@ export const generateCompactOneLiner = (db: any): string => {
             .map(([p, v]) => `${p}[${v.join(',')}]`)
             .join(' | ');
         console.log("TRANSITS CHECK:", transitsStr);
-        return `Today:[${today}]\nTRANSITS: ${transitsStr}\nTRANSIT_BAV(planet BAV in all houses, ✓=≥4 delivers): ${transitBavStr}\nLagna:[${lagna}] Rasi:[${rasi}] Nak:[${nak}] NakLord:[${nakLord}]\nGana:[${gana}] Nadi:[${nadi}] Paya:[${paya}] AK:${akStr}\nPLANETS: ${planetsStr}\nSHADBHALA: ${shadStr}\nAVASTHA: ${avasthaStr}\nDASHA: ${dashaStr}\nSAV: ${savStr}\nBAV(planet-house scores,≥4=delivers): ${bavStr}\nWILLPOWER_SCORE: ${wpStr}\n(Formula: 3rdHouseSAV×0.5 + 1.5×MarsShadbala.\n>18.50=strong free will overrides fate |\n12-18.50=mixed | <12=fate dominant)\nFP: Lucky#[${luckyNum}] Days:[${luckyDays}] Stone:[${luckyStone}] Metal:[${luckyMetal}]\nGH: BadDay:[${badDay}] BadNak:[${badNak}] BadPlanets:[${badPlanets}]\nCHALIT_SHIFTS:${chalitStr}\nNBRY_CANCELLED:${nbryStr}`;
+        return `Today:[${today}]\nTRANSITS: ${transitsStr}\nTRANSIT_BAV(planet BAV in all houses, ✓=≥4 delivers): ${transitBavStr}\nLagna:[${lagna}] Rasi:[${rasi}] Nak:[${nak}] NakLord:[${nakLord}]\nGana:[${gana}] Nadi:[${nadi}] Paya:[${paya}] AK:${akStr}\nPLANETS: ${planetsStr}\nSHADBHALA: ${shadStr}\nAVASTHA: ${avasthaStr}\nDASHA: ${dashaStr}\nSAV: ${savStr}\nBAV(planet-house scores,≥4=delivers): ${bavStr}\nWILLPOWER_SCORE: ${wpStr}\n(Formula: 3rdHouseSAV×0.5 + 1.5×MarsShadbala.\n>18.50=strong free will overrides fate |\n12-18.50=mixed | <12=fate dominant)\nBHRIGU_BINDU: ${bbStr}\nISHTA_DEVATA: ${idStr}\nASPECTS(planet→houses_aspected): ${aspectStr}\nFP: Lucky#[${luckyNum}] Days:[${luckyDays}] Stone:[${luckyStone}] Metal:[${luckyMetal}]\nGH: BadDay:[${badDay}] BadNak:[${badNak}] BadPlanets:[${badPlanets}]\nCHALIT_SHIFTS:${chalitStr}\nNBRY_CANCELLED:${nbryStr}`;
     } catch (e) {
         console.error("Error generating compact one liner", e);
         return "";
