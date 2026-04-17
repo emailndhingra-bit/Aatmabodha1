@@ -40,7 +40,7 @@ const TraditionalSummary: React.FC<Props> = ({ data }) => {
     { label: 'Sunset', value: getValue('Sunset', avkahadaChakra, basicDetails) },
     { label: 'Rasi Lord', value: getValue('Rasi_Lord', avkahadaChakra, basicDetails) },
     
-    { label: 'SID', value: getValue('Sideral_Time', basicDetails, avkahadaChakra) },
+    { label: 'SID', value: getValue('Sidereal_Time', basicDetails, avkahadaChakra) },
     { label: 'Sunrise', value: getValue('Sunrise', avkahadaChakra, basicDetails) },
     { label: 'Rasi', value: getValue('Rasi', avkahadaChakra, basicDetails) },
   ];

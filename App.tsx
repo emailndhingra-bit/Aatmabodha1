@@ -640,12 +640,33 @@ const App: React.FC = () => {
           const moonLon = (signNum - 1) * 30 + degVal;
           const nakNum = Math.floor(moonLon / (360/27)) + 1;
           const PAYA_MAP: Record<number, string> = {
-              1:"Gold",  2:"Silver",  3:"Copper", 4:"Silver", 5:"Gold",
-              6:"Iron",  7:"Silver",  8:"Copper", 9:"Iron",
-              10:"Silver", 11:"Silver", 12:"Copper", 13:"Silver", 14:"Gold",
-              15:"Iron", 16:"Silver", 17:"Copper", 18:"Iron",
-              19:"Gold", 20:"Silver", 21:"Copper", 22:"Silver", 23:"Gold",
-              24:"Iron", 25:"Silver", 26:"Copper", 27:"Iron"
+              1:"Gold",    // Ashwini
+              2:"Gold",    // Bharani
+              3:"Gold",    // Krittika
+              4:"Silver",  // Rohini
+              5:"Silver",  // Mrigashira
+              6:"Silver",  // Ardra
+              7:"Silver",  // Punarvasu
+              8:"Gold",    // Pushya
+              9:"Silver",  // Ashlesha
+              10:"Gold",   // Magha
+              11:"Gold",   // Purva Phalguni
+              12:"Copper", // Uttara Phalguni
+              13:"Copper", // Hasta
+              14:"Copper", // Chitra
+              15:"Gold",   // Swati
+              16:"Gold",   // Vishakha
+              17:"Gold",   // Anuradha
+              18:"Copper", // Jyeshtha
+              19:"Copper", // Mula
+              20:"Gold",   // Purva Ashadha
+              21:"Gold",   // Uttara Ashadha
+              22:"Silver", // Shravana
+              23:"Silver", // Dhanishtha
+              24:"Iron",   // Shatabhisha
+              25:"Iron",   // Purva Bhadrapada
+              26:"Silver", // Uttara Bhadrapada
+              27:"Silver", // Revati
           };
           avkahadaChakraObj.Paya = PAYA_MAP[nakNum];
       }
