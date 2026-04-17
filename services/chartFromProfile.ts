@@ -69,7 +69,7 @@ function enrichRawData(parsed: any, tzOffset: number, longitudeStr: string) {
       9: 'Silver',  // Ashlesha
       10: 'Gold',   // Magha
       11: 'Gold',   // Purva Phalguni
-      12: 'Copper', // Uttara Phalguni
+      12: 'Silver', // Uttara Phalguni
       13: 'Copper', // Hasta
       14: 'Copper', // Chitra
       15: 'Gold',   // Swati
