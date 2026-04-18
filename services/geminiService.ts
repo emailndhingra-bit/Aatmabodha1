@@ -13,6 +13,73 @@ const BACKEND_URL =
     "https://aatmabodha1-backend.onrender.com";
 const GEMINI_MODEL = "gemini-3.1-pro-preview";
 
+// Session memory keys
+const MEMORY_KEY = "aatmabodha_session_memory";
+
+// Load memory from localStorage
+export function loadSessionMemory(): string {
+    try {
+        if (typeof localStorage === "undefined") return "";
+        const raw = localStorage.getItem(MEMORY_KEY);
+        if (!raw) return "";
+        const memory = JSON.parse(raw);
+        // Only use memory from last 30 days
+        const lastSession = new Date(memory.lastSession);
+        const daysSince = (Date.now() - lastSession.getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSince > 30) {
+            localStorage.removeItem(MEMORY_KEY);
+            return "";
+        }
+        return `USER_MEMORY: ${JSON.stringify(memory)}`;
+    } catch {
+        return "";
+    }
+}
+
+// Save memory to localStorage after session
+export function saveSessionMemory(updates: {
+    topicsDiscussed?: string[];
+    remediesGiven?: string[];
+    pastValidated?: string;
+    keyInsightsGiven?: string[];
+    nextRemedyInRotation?: string;
+}): void {
+    try {
+        if (typeof localStorage === "undefined") return;
+        const existing = localStorage.getItem(MEMORY_KEY);
+        const current = existing
+            ? JSON.parse(existing)
+            : {
+                  lastSession: "",
+                  topicsDiscussed: [],
+                  remediesGiven: [],
+                  pastValidated: "",
+                  keyInsightsGiven: [],
+                  nextRemedyInRotation: "temple",
+              };
+
+        // Merge updates
+        const merged = {
+            lastSession: new Date().toISOString(),
+            topicsDiscussed: [
+                ...new Set([...(current.topicsDiscussed || []), ...(updates.topicsDiscussed || [])]),
+            ].slice(-10), // keep last 10 topics
+            remediesGiven: [
+                ...new Set([...(current.remediesGiven || []), ...(updates.remediesGiven || [])]),
+            ].slice(-6), // keep last 6 remedies
+            pastValidated: updates.pastValidated || current.pastValidated || "",
+            keyInsightsGiven: [
+                ...new Set([...(current.keyInsightsGiven || []), ...(updates.keyInsightsGiven || [])]),
+            ].slice(-10), // keep last 10 insights
+            nextRemedyInRotation: updates.nextRemedyInRotation || current.nextRemedyInRotation || "temple",
+        };
+
+        localStorage.setItem(MEMORY_KEY, JSON.stringify(merged));
+    } catch {
+        // localStorage not available — silent fail
+    }
+}
+
 /** JSON POSTs to Nest proxy — Bearer token so OptionalJwtGuard can set req.user */
 const jsonAuthHeaders = (): Record<string, string> => {
     const token =
@@ -459,7 +526,8 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
             if (seeking) lines.push(`USER_SEEKING: ${seeking}`);
             if (focus) lines.push(`USER_FOCUS_AREAS: ${focus}`);
             lines.push(`USER_ASTRO_LEVEL: ${astro}`);
-            const contextPrefix = `${lines.join('\n')}\n\n`;
+            const sessionMemory = loadSessionMemory();
+            const contextPrefix = `${lines.join("\n")}\n${sessionMemory ? sessionMemory + "\n" : ""}\n`;
 
             const fullPrompt = contextPrefix + userMessage;
 

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Upload, Download, Loader2, Sparkles, Moon, Table as TableIcon, LayoutGrid, Star, Database, Eye, MessageSquare, BarChart3, Diamond, RefreshCw, Scroll, Camera, UserCircle, Compass, Clock, CheckCircle, AlertTriangle, Play, Hand, Calendar, Book, History, X, Globe, Languages, Mic, ArrowRight, HelpCircle, Crown, Shield } from 'lucide-react';
 import { processAstrologyJson, identifyMissingData, enrichData, calculateAccurateTransits, getSignNum, getSignName, PLANET_LORDS } from './services/jsonMapper';
 import { initDatabase } from './services/db';
-import { createChatSession } from './services/geminiService';
+import { createChatSession, saveSessionMemory } from './services/geminiService';
 import { processFileContent, processZipFile } from './services/fileProcessor';
 import { AnalysisResult, RawInput } from './types';
 import { saveProfile, getMyProfiles, deleteProfile } from './services/profileService';
@@ -37,6 +37,58 @@ import AdminRoute from './src/pages/AdminRoute';
 import FloatingHelpBot from './components/FloatingHelpBot';
 
 type CultureMode = 'EN' | 'JP' | 'HI';
+
+function extractMemoryFromResponse(response: string, userMessage: string): void {
+  const updates: Parameters<typeof saveSessionMemory>[0] = {};
+
+  // Detect topic from user message
+  const msg = userMessage.toLowerCase();
+  const topics: string[] = [];
+  if (msg.includes('career') || msg.includes('job') || msg.includes('kaam')) topics.push('career');
+  if (msg.includes('shaadi') || msg.includes('marriage') || msg.includes('rishta')) topics.push('marriage');
+  if (msg.includes('paisa') || msg.includes('wealth') || msg.includes('money')) topics.push('wealth');
+  if (msg.includes('health') || msg.includes('sehat')) topics.push('health');
+  if (msg.includes('travel') || msg.includes('videsh')) topics.push('travel');
+  if (topics.length > 0) updates.topicsDiscussed = topics;
+
+  // Detect remedy given in response
+  const res = response.toLowerCase();
+  if (res.includes('mandir') || res.includes('temple')) updates.remediesGiven = ['temple'];
+  else if (res.includes('paani') || res.includes('lake') || res.includes('river') || res.includes('jal'))
+    updates.remediesGiven = ['water'];
+  else if (res.includes('mantra') || res.includes('baar')) updates.remediesGiven = ['mantra'];
+  else if (res.includes('rudraksha')) updates.remediesGiven = ['rudraksha'];
+  else if (res.includes('totka') || res.includes('daan') || res.includes('laddoo') || res.includes('til'))
+    updates.remediesGiven = ['totka'];
+  else if (res.includes('seva') || res.includes('orphanage') || res.includes('old age'))
+    updates.remediesGiven = ['seva'];
+
+  // Next remedy in rotation
+  const rotationOrder = ['temple', 'water', 'mantra', 'rudraksha', 'totka', 'seva'];
+  const lastRemedy = updates.remediesGiven?.[0];
+  if (lastRemedy) {
+    const currentIdx = rotationOrder.indexOf(lastRemedy);
+    const nextIdx = (currentIdx + 1) % rotationOrder.length;
+    updates.nextRemedyInRotation = rotationOrder[nextIdx];
+  }
+
+  // Detect key insights explained
+  const insights: string[] = [];
+  if (res.includes('hamsa yoga')) insights.push('Hamsa Yoga explained');
+  if (res.includes('saturn') && res.includes('delay')) insights.push('Saturn delay pattern discussed');
+  if (res.includes('mrita')) insights.push('Mrita avastha explained');
+  if (res.includes('d9') || res.includes('navamsha')) insights.push('D9 Navamsha explained');
+  if (insights.length > 0) updates.keyInsightsGiven = insights;
+
+  // Detect past timeline validated
+  const pastMatch = response.match(/(\d{4}[-–]\d{2,4}|\d{4})\s*mein.*?(hua hoga|tha|confirm)/i);
+  if (pastMatch) {
+    updates.pastValidated = pastMatch[0].slice(0, 100);
+  }
+
+  // Save to localStorage
+  saveSessionMemory(updates);
+}
 
 function convertToISTForAPI(dob: string, tob: string, timezoneOffset: number) {
   const [year, month, day] = dob.split('-').map(Number);
@@ -1064,6 +1116,15 @@ const App: React.FC = () => {
       if (!db) return;
       setLanguage(selectedLang);
       const chat = await createChatSession(db, selectedLang, cultureMode);
+      const origSend = chat.sendMessage.bind(chat);
+      chat.sendMessage = async (userMessage: string, userQuestion?: string) => {
+        const result = await origSend(userMessage, userQuestion);
+        const responseText = result?.error ? String(result.error) : (result?.text || '');
+        const userRaw =
+          typeof userQuestion === 'string' && userQuestion.trim().length > 0 ? userQuestion.trim() : userMessage;
+        extractMemoryFromResponse(responseText, userRaw);
+        return result;
+      };
       setChatSession(chat);
   };
 
