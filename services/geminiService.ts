@@ -14,20 +14,34 @@ const BACKEND_URL =
 const GEMINI_MODEL = "gemini-3.1-pro-preview";
 
 // Session memory keys
-const MEMORY_KEY = "aatmabodha_session_memory";
+export const MEMORY_KEY_PREFIX = "aatmabodha_memory_";
+
+function resolveMemoryUserIdFromStorage(): string {
+    try {
+        if (typeof localStorage === "undefined") return "guest";
+        const authRaw = localStorage.getItem("auth_user");
+        if (!authRaw) return "guest";
+        const auth = JSON.parse(authRaw) as { id?: string };
+        if (typeof auth?.id === "string" && auth.id.trim()) return auth.id.trim();
+        return "guest";
+    } catch {
+        return "guest";
+    }
+}
 
 // Load memory from localStorage
-export function loadSessionMemory(): string {
+export function loadSessionMemory(userId?: string): string {
     try {
         if (typeof localStorage === "undefined") return "";
-        const raw = localStorage.getItem(MEMORY_KEY);
+        const key = userId ? `${MEMORY_KEY_PREFIX}${userId}` : MEMORY_KEY_PREFIX + "guest";
+        const raw = localStorage.getItem(key);
         if (!raw) return "";
         const memory = JSON.parse(raw);
         // Only use memory from last 30 days
         const lastSession = new Date(memory.lastSession);
         const daysSince = (Date.now() - lastSession.getTime()) / (1000 * 60 * 60 * 24);
         if (daysSince > 30) {
-            localStorage.removeItem(MEMORY_KEY);
+            localStorage.removeItem(key);
             return "";
         }
         return `USER_MEMORY: ${JSON.stringify(memory)}`;
@@ -37,16 +51,30 @@ export function loadSessionMemory(): string {
 }
 
 // Save memory to localStorage after session
-export function saveSessionMemory(updates: {
-    topicsDiscussed?: string[];
-    remediesGiven?: string[];
-    pastValidated?: string;
-    keyInsightsGiven?: string[];
-    nextRemedyInRotation?: string;
-}): void {
+export function saveSessionMemory(
+    userIdOrUpdates:
+        | string
+        | {
+              topicsDiscussed?: string[];
+              remediesGiven?: string[];
+              pastValidated?: string;
+              keyInsightsGiven?: string[];
+              nextRemedyInRotation?: string;
+          },
+    updatesArg?: {
+        topicsDiscussed?: string[];
+        remediesGiven?: string[];
+        pastValidated?: string;
+        keyInsightsGiven?: string[];
+        nextRemedyInRotation?: string;
+    },
+): void {
+    const userId = typeof userIdOrUpdates === "string" ? userIdOrUpdates : undefined;
+    const updates = typeof userIdOrUpdates === "string" ? updatesArg || {} : userIdOrUpdates;
+    const key = userId ? `${MEMORY_KEY_PREFIX}${userId}` : MEMORY_KEY_PREFIX + "guest";
     try {
         if (typeof localStorage === "undefined") return;
-        const existing = localStorage.getItem(MEMORY_KEY);
+        const existing = localStorage.getItem(key);
         const current = existing
             ? JSON.parse(existing)
             : {
@@ -74,7 +102,7 @@ export function saveSessionMemory(updates: {
             nextRemedyInRotation: updates.nextRemedyInRotation || current.nextRemedyInRotation || "temple",
         };
 
-        localStorage.setItem(MEMORY_KEY, JSON.stringify(merged));
+        localStorage.setItem(key, JSON.stringify(merged));
     } catch {
         // localStorage not available — silent fail
     }
@@ -526,7 +554,7 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
             if (seeking) lines.push(`USER_SEEKING: ${seeking}`);
             if (focus) lines.push(`USER_FOCUS_AREAS: ${focus}`);
             lines.push(`USER_ASTRO_LEVEL: ${astro}`);
-            const sessionMemory = loadSessionMemory();
+            const sessionMemory = loadSessionMemory(resolveMemoryUserIdFromStorage());
             const contextPrefix = `${lines.join("\n")}\n${sessionMemory ? sessionMemory + "\n" : ""}\n`;
 
             const fullPrompt = contextPrefix + userMessage;

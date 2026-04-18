@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Upload, Download, Loader2, Sparkles, Moon, Table as TableIcon, LayoutGrid, Star, Database, Eye, MessageSquare, BarChart3, Diamond, RefreshCw, Scroll, Camera, UserCircle, Compass, Clock, CheckCircle, AlertTriangle, Play, Hand, Calendar, Book, History, X, Globe, Languages, Mic, ArrowRight, HelpCircle, Crown, Shield } from 'lucide-react';
 import { processAstrologyJson, identifyMissingData, enrichData, calculateAccurateTransits, getSignNum, getSignName, PLANET_LORDS } from './services/jsonMapper';
 import { initDatabase } from './services/db';
-import { createChatSession, saveSessionMemory } from './services/geminiService';
+import { createChatSession, saveSessionMemory, MEMORY_KEY_PREFIX } from './services/geminiService';
 import { processFileContent, processZipFile } from './services/fileProcessor';
 import { AnalysisResult, RawInput } from './types';
 import { saveProfile, getMyProfiles, deleteProfile } from './services/profileService';
@@ -38,8 +38,20 @@ import FloatingHelpBot from './components/FloatingHelpBot';
 
 type CultureMode = 'EN' | 'JP' | 'HI';
 
+function getOracleMemoryUserId(): string {
+  try {
+    const raw = localStorage.getItem('auth_user');
+    if (!raw) return 'guest';
+    const u = JSON.parse(raw) as { id?: string };
+    if (typeof u?.id === 'string' && u.id.trim()) return u.id.trim();
+    return 'guest';
+  } catch {
+    return 'guest';
+  }
+}
+
 function extractMemoryFromResponse(response: string, userMessage: string): void {
-  const updates: Parameters<typeof saveSessionMemory>[0] = {};
+  const updates: NonNullable<Parameters<typeof saveSessionMemory>[1]> = {};
 
   // Detect topic from user message
   const msg = userMessage.toLowerCase();
@@ -87,7 +99,7 @@ function extractMemoryFromResponse(response: string, userMessage: string): void 
   }
 
   // Save to localStorage
-  saveSessionMemory(updates);
+  saveSessionMemory(getOracleMemoryUserId(), updates);
 }
 
 function convertToISTForAPI(dob: string, tob: string, timezoneOffset: number) {
@@ -1369,6 +1381,12 @@ const App: React.FC = () => {
     } catch {
       /* ignore */
     }
+    // Remove old generic memory key if exists
+    // (does NOT remove other users' memories)
+    localStorage.removeItem(MEMORY_KEY_PREFIX + 'guest');
+    // Note: user-specific keys like
+    // aatmabodha_memory_userId123
+    // are kept forever (30-day expiry handles cleanup)
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
     window.location.href = '/login';
