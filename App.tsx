@@ -7,6 +7,12 @@ import { createChatSession } from './services/geminiService';
 import { processFileContent, processZipFile } from './services/fileProcessor';
 import { AnalysisResult, RawInput } from './types';
 import { saveProfile, getMyProfiles, deleteProfile } from './services/profileService';
+import {
+  mergeOracleUserContext,
+  readOracleUserContextForm,
+  writeOracleUserContext,
+  type AstroExperienceLevel,
+} from './services/oracleUserContext';
 
 import NorthIndianChart from './components/ChartVisualizer';
 import PlanetaryTable from './components/PlanetaryTable';
@@ -18,6 +24,7 @@ import PrastharaDisplay from './components/PrastharaDisplay';
 import AshtakvargaTable from './components/AshtakvargaTable';
 import ChalitTable from './components/ChalitTable';
 import ChatInterface from './components/ChatInterface';
+import ChartPersonalizedFAQ from './components/ChartPersonalizedFAQ';
 import CosmicFAQ from './components/CosmicFAQ';
 import DailyForecast from './components/DailyForecast';
 import DatabaseViewer from './components/DatabaseViewer';
@@ -67,6 +74,21 @@ function isAppAdminEmail(email: string | undefined | null): boolean {
     .filter(Boolean)
     .includes(email.trim());
 }
+
+const ONBOARDING_FOCUS_AREAS = [
+  '💼 Career & Work',
+  '❤️ Love & Marriage',
+  '💰 Wealth & Finance',
+  '🏥 Health',
+  '👨‍👩‍👧 Family',
+  '✈️ Travel & Foreign',
+  '🧘 Spirituality',
+  '🏠 Property & Home',
+  '📚 Education',
+  '⚖️ Legal Matters',
+  '😌 Peace of Mind',
+  '🔮 Life Purpose',
+] as const;
 
 const App: React.FC = () => {
   const path = window.location.pathname;
@@ -176,6 +198,37 @@ const App: React.FC = () => {
   const [showProfileSelector, setShowProfileSelector] = useState(false);
   const [profileSaveError, setProfileSaveError] = useState('');
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const [editingTimezone, setEditingTimezone] = useState(false);
+  const [editingCoords, setEditingCoords] = useState(false);
+  const [oraclePreferredLang, setOraclePreferredLang] = useState<string>(() => {
+    const d = readOracleUserContextForm();
+    return d.preferredLanguage || localStorage.getItem('vedicLanguage') || 'Hinglish';
+  });
+  const [presentCityText, setPresentCityText] = useState(() => readOracleUserContextForm().presentCity || '');
+  const [confidentialSkipped, setConfidentialSkipped] = useState(false);
+  const [whyHereText, setWhyHereText] = useState(() => readOracleUserContextForm().whySeeking || '');
+  const [focusAreas, setFocusAreas] = useState<string[]>(() => readOracleUserContextForm().focusAreas || []);
+  const [astroLevel, setAstroLevel] = useState<AstroExperienceLevel>(
+    () => readOracleUserContextForm().astroLevel || 'moderate',
+  );
+
+  useEffect(() => {
+    if (data) return;
+    const cur = readOracleUserContextForm();
+    mergeOracleUserContext({
+      preferredLanguage: oraclePreferredLang,
+      presentCity: presentCityText,
+      whySeeking: whyHereText,
+      focusAreas,
+      astroLevel,
+      setupDone: cur.setupDone,
+    });
+  }, [data, oraclePreferredLang, presentCityText, whyHereText, focusAreas, astroLevel]);
+
+  const toggleFocusArea = (area: string) => {
+    setFocusAreas((prev) => (prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]));
+  };
 
   // --- TIMEZONE CALCULATION LOGIC ---
   useEffect(() => {
@@ -290,6 +343,7 @@ const App: React.FC = () => {
     localStorage.removeItem('vedicBtrPerformed');
     localStorage.removeItem('vedicChatHistory');
     localStorage.removeItem('vedicQueryAnalytics');
+    localStorage.removeItem('userContext');
     // Keep consent — user doesn't need to re-consent after reset
     // localStorage.removeItem('vedicConsentVersion'); // Uncomment only for full wipe
     
@@ -430,6 +484,15 @@ const App: React.FC = () => {
           setProfileSaveError('You have reached the maximum of 2 profiles. Please delete one to add a new person.');
         }
       }
+      try {
+        const ctx = readOracleUserContextForm();
+        const lang = ctx.preferredLanguage || localStorage.getItem('vedicLanguage') || 'Hinglish';
+        setLanguage(lang);
+        localStorage.setItem('vedicLanguage', lang);
+        await initChatSession(lang, db);
+      } catch (e) {
+        console.warn('initChatSession after chart', e);
+      }
       return db;
   };
 
@@ -471,6 +534,7 @@ const App: React.FC = () => {
           language: localStorage.getItem('vedicLanguage') || null,
           cultureMode: cultureMode,
         },
+        oracleUserContext: readOracleUserContextForm(),
         consent: {
           version: CONSENT_VERSION,
           timestamp: localStorage.getItem('vedicConsentTimestamp') || '',
@@ -520,6 +584,19 @@ const App: React.FC = () => {
       if (vault.timezoneName) { localStorage.setItem('vedicUserTimezoneName', vault.timezoneName); setTimezoneName(vault.timezoneName); }
       if (vault.timezone) { localStorage.setItem('vedicUserTimezone', vault.timezone); setTimezone(parseFloat(vault.timezone)); }
       if (vault.chatHistory?.length) localStorage.setItem('vedicChatHistory', JSON.stringify(vault.chatHistory));
+      if (vault.oracleUserContext && typeof vault.oracleUserContext === 'object') {
+        try {
+          mergeOracleUserContext(vault.oracleUserContext as Record<string, unknown>);
+          const o = readOracleUserContextForm();
+          setOraclePreferredLang(o.preferredLanguage);
+          setPresentCityText(o.presentCity);
+          setWhyHereText(o.whySeeking || '');
+          setFocusAreas(o.focusAreas || []);
+          setAstroLevel(o.astroLevel || 'moderate');
+        } catch {
+          /* ignore */
+        }
+      }
       if (vault.consent?.version) {
         localStorage.setItem('vedicConsentVersion', vault.consent.version);
         localStorage.setItem('vedicConsentTimestamp', vault.consent.timestamp || new Date().toISOString());
@@ -737,6 +814,16 @@ const App: React.FC = () => {
     setError(null);
 
     try {
+        writeOracleUserContext({
+          setupDone: true,
+          preferredLanguage: oraclePreferredLang,
+          presentCity: presentCityText.trim(),
+          whySeeking: whyHereText,
+          focusAreas,
+          astroLevel,
+        });
+        localStorage.setItem('vedicLanguage', oraclePreferredLang);
+
         const { date_of_birth, time_of_birth } = convertToISTForAPI(dobVal, tobVal, tzVal);
         const payload = {
             date_of_birth,
@@ -1171,6 +1258,14 @@ const App: React.FC = () => {
       }
   };
 
+  const handlePersonalizedFaqClick = (question: string) => {
+    setTriggerPrompt(question);
+    setViewMode('chat');
+    window.requestAnimationFrame(() => {
+      document.querySelector('[data-oracle-messages]')?.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  };
+
   // Filter Divisional Charts for specific table view
   const charts = data?.charts || [];
 
@@ -1333,7 +1428,7 @@ const App: React.FC = () => {
                         <span className="text-[8px] bg-rose-900/40 border border-rose-500/30 text-rose-100 px-1.5 py-0.5 rounded-full uppercase tracking-wider">Required</span>
                     </h3>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 relative mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 relative mb-4">
                         <div className="flex flex-col gap-1">
                             <label className="text-xs text-indigo-300 font-medium">Name</label>
                             <input type="text" value={userName} onChange={e => setUserName(e.target.value)} placeholder="Enter your name" className="bg-indigo-950/50 text-amber-200 text-sm p-3 rounded-xl border border-indigo-700 focus:border-amber-500 outline-none" />
@@ -1354,17 +1449,9 @@ const App: React.FC = () => {
                             <label className="text-xs text-indigo-300 font-medium">Time of Birth</label>
                             <input type="time" value={tob} onChange={e => setTob(e.target.value)} className="bg-indigo-950/50 text-amber-200 text-sm p-3 rounded-xl border border-indigo-700 focus:border-amber-500 outline-none [color-scheme:dark] golden-icon" />
                         </div>
-                        <div className="flex flex-col gap-1">
-                            <label className="text-xs text-indigo-300 font-medium">Timezone (Offset)</label>
-                            <input type="number" step="0.5" value={timezone} onChange={e => {
-                                const val = parseFloat(e.target.value);
-                                setTimezone(val);
-                                localStorage.setItem('vedicUserTimezone', val.toString());
-                            }} className="bg-indigo-950/50 text-amber-200 text-sm p-3 rounded-xl border border-indigo-700 focus:border-amber-500 outline-none" />
-                        </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative">
-                        <div className="flex flex-col gap-1 relative">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative mb-4">
+                        <div className="flex flex-col gap-1 relative md:col-span-1">
                             <label className="text-xs text-indigo-300 font-medium">Place of Birth</label>
                             <input 
                                 type="text" 
@@ -1390,13 +1477,181 @@ const App: React.FC = () => {
                                 </div>
                             )}
                         </div>
-                        <div className="flex flex-col gap-1">
-                            <label className="text-xs text-indigo-300 font-medium">Latitude</label>
-                            <input type="number" step="any" value={lat} onChange={e => setLat(e.target.value)} placeholder="e.g. 28.6139" className="bg-indigo-950/50 text-amber-200 text-sm p-3 rounded-xl border border-indigo-700 focus:border-amber-500 outline-none" />
+                        <div className="flex flex-col gap-1 md:col-span-2">
+                            <label className="text-xs text-indigo-300 font-medium">Where You Live Now</label>
+                            <input
+                                type="text"
+                                value={presentCityText}
+                                onChange={(e) => setPresentCityText(e.target.value)}
+                                placeholder="e.g. Mumbai, Delhi, Dubai, London"
+                                className="bg-indigo-950/50 text-amber-200 text-sm p-3 rounded-xl border border-indigo-700 focus:border-amber-500 outline-none"
+                            />
+                            <p className="text-[10px] text-indigo-400/70">Used for personalized local remedies and timing (not your birth place).</p>
                         </div>
-                        <div className="flex flex-col gap-1">
-                            <label className="text-xs text-indigo-300 font-medium">Longitude</label>
-                            <input type="number" step="any" value={lon} onChange={e => setLon(e.target.value)} placeholder="e.g. 77.2090" className="bg-indigo-950/50 text-amber-200 text-sm p-3 rounded-xl border border-indigo-700 focus:border-amber-500 outline-none" />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative mb-4">
+                        <div className="flex flex-col gap-1 rounded-xl border border-indigo-800/40 bg-indigo-950/20 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                                <label className="text-xs text-indigo-300 font-medium">Timezone (UTC offset hours)</label>
+                                <span title="Auto-calculated from your birth place. Click Edit to override." className="shrink-0">
+                                    {editingTimezone ? (
+                                        <button type="button" onClick={() => setEditingTimezone(false)} className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300">Done ✓</button>
+                                    ) : (
+                                        <button type="button" onClick={() => setEditingTimezone(true)} className="text-[11px] font-semibold text-amber-400/90 hover:text-amber-300">Edit ✏️</button>
+                                    )}
+                                </span>
+                            </div>
+                            {editingTimezone ? (
+                                <div className="flex flex-col gap-1">
+                                    <input type="number" step="0.5" value={timezone} onChange={e => {
+                                        const val = parseFloat(e.target.value);
+                                        if (!Number.isNaN(val)) {
+                                            setTimezone(val);
+                                            localStorage.setItem('vedicUserTimezone', val.toString());
+                                        }
+                                    }} className="bg-indigo-950/50 text-amber-200 text-sm p-3 rounded-xl border border-indigo-700 focus:border-amber-500 outline-none" />
+                                    <p className="text-[10px] text-indigo-400/80">Only change if auto-detected value is incorrect.</p>
+                                </div>
+                            ) : (
+                                <div className="flex items-center justify-between gap-2 rounded-lg bg-[#0f0c29]/80 px-3 py-2.5 border border-indigo-900/50" title="Auto-calculated from your birth place. Click Edit to override.">
+                                    <span className="text-sm text-amber-100 font-mono">{timezone}</span>
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex flex-col gap-1 rounded-xl border border-indigo-800/40 bg-indigo-950/20 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                                <label className="text-xs text-indigo-300 font-medium">Birth coordinates</label>
+                                <span title="Auto-calculated from your birth place. Click Edit to override." className="shrink-0">
+                                    {editingCoords ? (
+                                        <button type="button" onClick={() => setEditingCoords(false)} className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300">Done ✓</button>
+                                    ) : (
+                                        <button type="button" onClick={() => setEditingCoords(true)} className="text-[11px] font-semibold text-amber-400/90 hover:text-amber-300">Edit ✏️</button>
+                                    )}
+                                </span>
+                            </div>
+                            {editingCoords ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <input type="number" step="any" value={lat} onChange={e => setLat(e.target.value)} placeholder="Latitude" className="bg-indigo-950/50 text-amber-200 text-sm p-3 rounded-xl border border-indigo-700 focus:border-amber-500 outline-none" />
+                                    <input type="number" step="any" value={lon} onChange={e => setLon(e.target.value)} placeholder="Longitude" className="bg-indigo-950/50 text-amber-200 text-sm p-3 rounded-xl border border-indigo-700 focus:border-amber-500 outline-none" />
+                                    <p className="text-[10px] text-indigo-400/80 sm:col-span-2">Only change if auto-detected value is incorrect.</p>
+                                </div>
+                            ) : (
+                                <div className="rounded-lg bg-[#0f0c29]/80 px-3 py-2.5 border border-indigo-900/50 text-left" title="Auto-calculated from your birth place. Click Edit to override.">
+                                    <p className="text-xs text-indigo-200/90"><span className="text-indigo-400">Lat</span> {lat || '—'}</p>
+                                    <p className="text-xs text-indigo-200/90 mt-1"><span className="text-indigo-400">Lon</span> {lon || '—'}</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="rounded-[1.25rem] border border-indigo-500/25 bg-[#120f26]/60 p-4 sm:p-5 mb-4">
+                        <label className="text-xs text-indigo-300 font-medium block mb-2">Preferred language (Oracle)</label>
+                        <div className="flex flex-wrap gap-2">
+                            {(['hinglish', 'hindi', 'english'] as const).map((code) => {
+                                const labels: Record<string, string> = {
+                                    hinglish: '🇮🇳 Hinglish',
+                                    hindi: 'हिंदी Hindi',
+                                    english: '🇬🇧 English',
+                                };
+                                const apiVal = code === 'hinglish' ? 'Hinglish' : code === 'hindi' ? 'Hindi' : 'English';
+                                const selected = oraclePreferredLang === apiVal;
+                                return (
+                                    <button
+                                        key={code}
+                                        type="button"
+                                        onClick={() => setOraclePreferredLang(apiVal)}
+                                        className={`px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all ${
+                                            selected
+                                                ? 'bg-amber-600/90 text-white border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.25)]'
+                                                : 'bg-[#1a1638] text-indigo-200 border-indigo-500/35 hover:border-amber-500/40'
+                                        }`}
+                                    >
+                                        {labels[code]}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <p className="text-[10px] text-indigo-400/70 mt-2">Oracle will respond in your chosen language. You can override later in chat.</p>
+                    </div>
+
+                    {!confidentialSkipped && (
+                    <div className="rounded-[1.5rem] border border-violet-500/30 bg-gradient-to-br from-violet-950/30 to-[#120f26] p-4 sm:p-6 mb-4 text-left">
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                            <div className="flex items-center gap-2">
+                                <span className="text-lg" aria-hidden>🔒</span>
+                                <h3 className="text-amber-100 font-serif font-bold text-base sm:text-lg">Your Personal Space</h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setConfidentialSkipped(true)}
+                                className="text-[11px] sm:text-xs text-violet-300 hover:text-amber-200 underline underline-offset-2"
+                            >
+                                Skip for now →
+                            </button>
+                        </div>
+                        <p className="text-xs text-indigo-200/85 mb-4 leading-relaxed">
+                            This is completely private. Only the Oracle reads this — no human sees it. The more you share, the more precisely it can guide you.
+                        </p>
+                        <div className="flex flex-col gap-1 mb-4">
+                            <label className="text-xs text-indigo-300 font-medium">What brings you here? (Optional)</label>
+                            <textarea
+                                rows={4}
+                                value={whyHereText}
+                                onChange={(e) => setWhyHereText(e.target.value)}
+                                maxLength={2000}
+                                placeholder="Share as little or as much as you want. What are you seeking clarity on? What has been weighing on you?"
+                                className="bg-indigo-950/50 text-amber-100/95 text-sm p-3 rounded-xl border border-indigo-700 focus:border-amber-500 outline-none resize-y min-h-[96px]"
+                            />
+                            <p className="text-[10px] text-indigo-400 text-right">{whyHereText.length}/2000</p>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <label className="text-xs text-indigo-300 font-medium">What areas matter most to you right now?</label>
+                            <p className="text-[10px] text-indigo-400/70">Select all that apply</p>
+                            <div className="flex flex-wrap gap-2">
+                                {ONBOARDING_FOCUS_AREAS.map((area) => (
+                                    <button
+                                        key={area}
+                                        type="button"
+                                        onClick={() => toggleFocusArea(area)}
+                                        className={`px-2.5 py-1.5 rounded-full text-[11px] sm:text-xs font-medium border transition-all ${
+                                            focusAreas.includes(area)
+                                                ? 'bg-violet-600/80 text-white border-violet-400'
+                                                : 'bg-[#1a1638] text-indigo-200 border-indigo-500/35 hover:border-violet-500/40'
+                                        }`}
+                                    >
+                                        {area}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                    )}
+
+                    <div className="rounded-[1.25rem] border border-indigo-500/25 bg-[#120f26]/60 p-4 sm:p-5 mb-4 text-left">
+                        <label className="text-xs text-indigo-300 font-medium block mb-1">Your astrology experience</label>
+                        <p className="text-[10px] text-indigo-400/75 mb-3">This personalizes how the Oracle communicates with you.</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {([
+                                { id: 'beginner' as const, icon: '🌱', title: 'Beginner', desc: 'New to astrology. Keep it simple and relatable.' },
+                                { id: 'moderate' as const, icon: '🌿', title: 'Moderate', desc: 'I know some basics. Mix depth with clarity.' },
+                                { id: 'advanced' as const, icon: '🌳', title: 'Advanced', desc: 'I understand Jyotish. Give me full depth.' },
+                            ]).map((card) => (
+                                <button
+                                    key={card.id}
+                                    type="button"
+                                    onClick={() => setAstroLevel(card.id)}
+                                    className={`flex flex-col items-start text-left rounded-xl border p-3 transition-all ${
+                                        astroLevel === card.id
+                                            ? 'border-amber-500/60 bg-amber-950/30 shadow-[0_0_16px_rgba(245,158,11,0.15)]'
+                                            : 'border-indigo-700/40 bg-[#0f0c29]/60 hover:border-indigo-500/50'
+                                    }`}
+                                >
+                                    <span className="text-xl mb-1" aria-hidden>{card.icon}</span>
+                                    <h4 className="text-sm font-bold text-amber-100">{card.title}</h4>
+                                    <p className="text-[10px] text-indigo-300/90 mt-1 leading-snug">{card.desc}</p>
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </div>
@@ -1582,6 +1837,7 @@ const App: React.FC = () => {
             
             {/* VIEW MODE: CHAT (Kept mounted via CSS logic to preserve history) */}
             <div className={viewMode === 'chat' ? 'max-w-5xl mx-auto block' : 'hidden'}>
+                 <ChartPersonalizedFAQ chartData={data} onQuestionClick={handlePersonalizedFaqClick} />
                  <ChatInterface 
                     chatSession={chatSession} 
                     db={dbInstance} 

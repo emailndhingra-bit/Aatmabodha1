@@ -444,9 +444,22 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
             const userCtx = localStorage.getItem('userContext');
             const ctx = userCtx ? JSON.parse(userCtx) : {};
 
-            const contextPrefix = ctx.presentCity || ctx.preferredLanguage
-                ? `[USER_CONTEXT: Language=${ctx.preferredLanguage || 'Hinglish'}, Location=${ctx.presentCity || 'India'}]\n\n`
+            const lang = ctx.preferredLanguage || 'Hinglish';
+            const loc = typeof ctx.presentCity === 'string' && ctx.presentCity.trim() ? ctx.presentCity.trim() : '';
+            const seeking = typeof ctx.whySeeking === 'string' && ctx.whySeeking.trim() ? ctx.whySeeking.trim().slice(0, 1900) : '';
+            const focus =
+              Array.isArray(ctx.focusAreas) && ctx.focusAreas.length
+                ? ctx.focusAreas.filter((x: unknown) => typeof x === 'string').join(', ')
                 : '';
+            const astro = ctx.astroLevel === 'beginner' || ctx.astroLevel === 'moderate' || ctx.astroLevel === 'advanced' ? ctx.astroLevel : 'moderate';
+
+            const lines: string[] = [];
+            lines.push(`USER_LANGUAGE: ${lang}`);
+            if (loc) lines.push(`USER_CURRENT_LOCATION: ${loc}`);
+            if (seeking) lines.push(`USER_SEEKING: ${seeking}`);
+            if (focus) lines.push(`USER_FOCUS_AREAS: ${focus}`);
+            lines.push(`USER_ASTRO_LEVEL: ${astro}`);
+            const contextPrefix = `${lines.join('\n')}\n\n`;
 
             const fullPrompt = contextPrefix + userMessage;
 

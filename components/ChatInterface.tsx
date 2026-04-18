@@ -4,6 +4,13 @@ import { Send, Sparkles, User, Bot, Loader2, BrainCircuit, Copy, Check, X, Globe
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { generateCosmicImage, generateCompactOneLiner, getExtraContext } from '../services/geminiService';
+import {
+  getAstroLevelOracleHint,
+  mergeOracleUserContext,
+  readOracleUserContext,
+  readOracleUserContextForm,
+  USER_CONTEXT_KEY,
+} from '../services/oracleUserContext';
 import { getOracleShareDashaLine } from '../services/oracleShareUtils';
 import OracleShareModal from './OracleShareModal';
 import { processFileContent, processZipFile } from '../services/fileProcessor';
@@ -273,14 +280,6 @@ const INDIAN_LANGUAGES = [
   { code: 'Urdu', label: 'اردو', desc: 'تقدیر اور ستارے' }
 ];
 
-const USER_CONTEXT_KEY = 'userContext';
-
-type OracleUserContext = {
-  preferredLanguage: string;
-  presentCity: string;
-  setupDone: boolean;
-};
-
 const SETUP_LANGUAGE_OPTIONS = [
   'Hinglish',
   'Hindi',
@@ -292,25 +291,6 @@ const SETUP_LANGUAGE_OPTIONS = [
   'Gujarati',
   'Punjabi',
 ] as const;
-
-function readOracleUserContext(): OracleUserContext | null {
-  if (typeof localStorage === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(USER_CONTEXT_KEY);
-    if (!raw) return null;
-    const p = JSON.parse(raw) as Partial<OracleUserContext>;
-    if (p && p.setupDone === true && typeof p.preferredLanguage === 'string') {
-      return {
-        preferredLanguage: p.preferredLanguage,
-        presentCity: typeof p.presentCity === 'string' ? p.presentCity : '',
-        setupDone: true,
-      };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 const GLOBAL_LANGUAGES = [
   { code: 'English', label: 'English', desc: 'Professional & Direct' },
@@ -329,8 +309,8 @@ const GLOBAL_LANGUAGES = [
 
 const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageSelect, userPhoto, userAge, userGotra, userMood, userName, userGender, triggerPrompt, onPromptHandled, cultureMode = 'EN' }) => {
   const [setupWizardComplete, setSetupWizardComplete] = useState(() => readOracleUserContext() != null);
-  const [setupPreferredLang, setSetupPreferredLang] = useState<string>(() => readOracleUserContext()?.preferredLanguage || 'Hinglish');
-  const [setupPresentCity, setSetupPresentCity] = useState(() => readOracleUserContext()?.presentCity || '');
+  const [setupPreferredLang, setSetupPreferredLang] = useState<string>(() => readOracleUserContextForm().preferredLanguage || 'Hinglish');
+  const [setupPresentCity, setSetupPresentCity] = useState(() => readOracleUserContextForm().presentCity || '');
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -690,18 +670,18 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
   };
 
   const handleOracleSetupComplete = () => {
-    const payload: OracleUserContext = {
+    mergeOracleUserContext({
       preferredLanguage: setupPreferredLang,
       presentCity: setupPresentCity.trim(),
       setupDone: true,
-    };
+    });
     try {
-      localStorage.setItem(USER_CONTEXT_KEY, JSON.stringify(payload));
-    } catch (e) {
-      console.warn('Could not persist user context', e);
+      localStorage.setItem('vedicLanguage', setupPreferredLang);
+    } catch {
+      /* ignore */
     }
     setSetupWizardComplete(true);
-    onLanguageSelect(setupPreferredLang);
+    void onLanguageSelect(setupPreferredLang);
   };
 
   const handleResetOracleUserContext = () => {
@@ -751,16 +731,20 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
     }
 
     try {
-      const rawCtx = localStorage.getItem(USER_CONTEXT_KEY);
-      if (rawCtx) {
-        const uc = JSON.parse(rawCtx) as OracleUserContext;
-        if (uc?.setupDone && uc.preferredLanguage) {
-          steeringInstructions += ` USER_PREFERRED_LANGUAGE: ${uc.preferredLanguage}. Match tone and vocabulary to this choice.`;
-          if (uc.presentCity?.trim()) {
-            steeringInstructions += ` USER_LOCATION (present city): ${uc.presentCity.trim()}.`;
-          }
-        }
+      const uc = readOracleUserContextForm();
+      if (uc.preferredLanguage) {
+        steeringInstructions += ` USER_LANGUAGE: ${uc.preferredLanguage}. USER_PREFERRED_LANGUAGE: ${uc.preferredLanguage}. Match tone and vocabulary to this choice.`;
       }
+      if (uc.presentCity?.trim()) {
+        steeringInstructions += ` USER_CURRENT_LOCATION: ${uc.presentCity.trim()}. USER_LOCATION (present city): ${uc.presentCity.trim()}.`;
+      }
+      if (uc.whySeeking?.trim()) {
+        steeringInstructions += ` USER_SEEKING: ${uc.whySeeking.trim().slice(0, 1900)}`;
+      }
+      if (uc.focusAreas?.length) {
+        steeringInstructions += ` USER_FOCUS_AREAS: ${uc.focusAreas.join(', ')}.`;
+      }
+      steeringInstructions += ` ${getAstroLevelOracleHint(uc.astroLevel)}`;
     } catch {
       /* ignore */
     }
@@ -1411,6 +1395,41 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
                 <FileDown className="w-3.5 h-3.5" />
                 <span className="text-xs font-bold font-serif tracking-wide hidden sm:inline">PDF</span>
             </button>
+            <label className="flex items-center gap-1.5 shrink-0 text-[10px] text-indigo-400 uppercase tracking-wider font-bold">
+              <Globe className="w-3.5 h-3.5 text-amber-500/80" />
+              <span className="hidden sm:inline">Lang</span>
+              <select
+                value={language || readOracleUserContextForm().preferredLanguage || 'Hinglish'}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  mergeOracleUserContext({ preferredLanguage: v });
+                  try {
+                    localStorage.setItem('vedicLanguage', v);
+                  } catch {
+                    /* ignore */
+                  }
+                  void onLanguageSelect(v);
+                }}
+                className="max-w-[140px] sm:max-w-[180px] rounded-lg border border-indigo-600/40 bg-[#1a1638] text-indigo-100 text-[11px] font-semibold py-1.5 pl-2 pr-7 outline-none focus:border-amber-500/50"
+                title="Override response language for this device"
+              >
+                {SETUP_LANGUAGE_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+                {INDIAN_LANGUAGES.filter((l) => !(SETUP_LANGUAGE_OPTIONS as readonly string[]).includes(l.code)).map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {l.label}
+                  </option>
+                ))}
+                {GLOBAL_LANGUAGES.map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
       </div>
 
