@@ -178,6 +178,7 @@ export class GeminiService {
             language: body.language,
             cacheHit: false,
             costUsd,
+            chartContext: body.chartContext ?? undefined,
           })
           .catch(() => {});
       }
@@ -322,6 +323,7 @@ export class GeminiService {
             language: body.language || 'EN',
             cacheHit: contextCacheHit,
             costUsd,
+            chartContext: body.chartContext ?? undefined,
           })
           .catch(() => {});
       }
