@@ -503,6 +503,35 @@ const App: React.FC = () => {
     },
   ) => {
       setData(finalData);
+      // Save chart context for analytics
+      try {
+        const data = finalData as any;
+        const chartCtx = {
+          userMoonSign: data?.avakahada?.Rasi || data?.avkahadaChakra?.Rasi || null,
+          userLagna: data?.avakahada?.Lagna || data?.avkahadaChakra?.Lagna || null,
+          userAtmakaraka: data?.AK || null,
+          userSadeSati: data?.sadeSati || false,
+          userDashaType: data?.dashas?.VD?.[0]?.mdLord || null,
+          ageGroup: (() => {
+            const dobStr = dob || "";
+            const d = new Date(dobStr);
+            const age = new Date().getFullYear() - d.getFullYear();
+            if (age <= 27) return "GEN_Z";
+            if (age <= 42) return "MILLENNIAL";
+            if (age <= 55) return "GEN_X";
+            return "SENIOR";
+          })(),
+          dashaAtTime: data?.dashas?.VD?.[0]
+            ? `${data.dashas.VD[0].mdLord}-${data.dashas.VD[0].adLord}`
+            : null,
+        };
+        localStorage.setItem(
+          "aatmabodha_chart_context",
+          JSON.stringify(chartCtx),
+        );
+      } catch {
+        /* ignore */
+      }
       try {
         localStorage.setItem('vedicAstroData', JSON.stringify(finalData));
       } catch (storageErr) {

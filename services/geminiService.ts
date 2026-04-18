@@ -208,6 +208,17 @@ const callGeminiChat = async (
                 ...(userQuestion != null && userQuestion !== ""
                     ? { userQuestion }
                     : {}),
+                ...(typeof window !== "undefined" &&
+                    (() => {
+                      try {
+                        const ctx = localStorage.getItem(
+                          "aatmabodha_chart_context",
+                        );
+                        return ctx ? { chartContext: JSON.parse(ctx) } : {};
+                      } catch {
+                        return {};
+                      }
+                    })()),
             }),
         });
         if (!res.ok) {
