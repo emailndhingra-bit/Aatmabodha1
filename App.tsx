@@ -513,10 +513,35 @@ const App: React.FC = () => {
       try {
         const akQ = db.exec(
           `SELECT planet_name FROM planets 
-           WHERE D1_Rashi_jamini = 'Atmakaraka' 
+           WHERE LOWER(D1_Rashi_jamini) LIKE '%atmakaraka%'
+           OR LOWER(D1_Rashi_jamini) LIKE '%atma karaka%'
+           OR LOWER(D1_Rashi_jamini) = 'ak'
            LIMIT 1`
         );
-        const ak = akQ?.[0]?.values?.[0]?.[0] || null;
+        let ak: string | null = akQ?.[0]?.values?.[0]?.[0] || null;
+        if (!ak) {
+          // Fallback: highest degree planet = AK
+          // (same logic as generateCompactOneLiner)
+          const allP = db.exec(
+            `SELECT planet_name, D1_Rashi_degree 
+             FROM planets 
+             WHERE planet_name NOT IN 
+             ('Lagna','Rahu','Ketu','Uranus','Neptune','Pluto')`
+          );
+          let maxDeg = -1;
+          allP?.[0]?.values?.forEach((row: any[]) => {
+            const degStr = String(row[1] || '');
+            const parts = degStr.split('°');
+            const deg = parseInt(parts[0]?.trim() || '0', 10) || 0;
+            const minParts = parts[1] ? parts[1].split("'") : [];
+            const min = parseInt(minParts[0]?.trim() || '0', 10) || 0;
+            const total = deg + (min / 60);
+            if (total > maxDeg) {
+              maxDeg = total;
+              ak = String(row[0] || '');
+            }
+          });
+        }
 
         const dashaQ = db.exec(
           `SELECT period_name FROM dashas 
