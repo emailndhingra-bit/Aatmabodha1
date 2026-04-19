@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { buildChildDestinyPromptParts, extractChartData } from '../services/childDestinyReportService';
+import { generateReportPDF } from '../services/reportPdfGenerator';
 
 const GOLD = '#c9a96e';
 const NAVY = '#0c1222';
@@ -108,6 +110,10 @@ export default function AdminReportsHub({ backend, headers }: Props) {
   const [histPage, setHistPage] = useState(1);
   const [msg, setMsg] = useState('');
 
+  const [childDestinyProfileId, setChildDestinyProfileId] = useState('');
+  const [childGenerating, setChildGenerating] = useState(false);
+  const [childReportStatus, setChildReportStatus] = useState('');
+
   const [modalOpen, setModalOpen] = useState(false);
   const [activeTile, setActiveTile] = useState<(typeof REPORT_TILES)[number] | null>(null);
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
@@ -177,6 +183,46 @@ export default function AdminReportsHub({ backend, headers }: Props) {
 
   const scrollToHistory = () => {
     document.getElementById('admin-reports-history')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleChildDestinyReport = async () => {
+    if (!childDestinyProfileId) return;
+    setChildGenerating(true);
+    setChildReportStatus('Fetching chart from engine…');
+    try {
+      const chartRes = await fetch(
+        `${backend}/api/admin/reports-hub/profile/${encodeURIComponent(childDestinyProfileId)}/chart`,
+        { headers },
+      );
+      if (!chartRes.ok) {
+        const errBody = await chartRes.text();
+        throw new Error(errBody || `HTTP ${chartRes.status}`);
+      }
+      const rawChart = (await chartRes.json()) as Record<string, unknown>;
+      const hint = profiles.find((p) => p.id === childDestinyProfileId);
+      const chartData = extractChartData(rawChart, {
+        name: hint?.name,
+        dateOfBirth: hint?.dateOfBirth,
+      });
+      const promptParts = buildChildDestinyPromptParts(chartData);
+      setChildReportStatus('Generating Child Destiny Report (3 AI passes, ~2–6 min)…');
+      const response = await fetch(`${backend}/api/reports/child-destiny`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ promptParts }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { report?: string; message?: string };
+      if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
+      const report = String(data.report || '');
+      if (!report.trim()) throw new Error('Empty report from server');
+      await generateReportPDF(report, chartData.childName);
+      setChildReportStatus('Print dialog opened — choose Save as PDF to download.');
+    } catch (error) {
+      setChildReportStatus('Error generating report. Try again.');
+      console.error(error);
+    } finally {
+      setChildGenerating(false);
+    }
   };
 
   const runGenerate = async () => {
@@ -315,6 +361,69 @@ export default function AdminReportsHub({ backend, headers }: Props) {
       </div>
 
       <div
+        id="child-destiny-report-panel"
+        style={{
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(201,169,110,0.3)',
+          borderRadius: 12,
+          padding: 20,
+          marginBottom: 28,
+          maxWidth: 920,
+        }}
+      >
+        <div style={{ color: GOLD, fontWeight: 600, marginBottom: 12, fontSize: 14 }}>Child Destiny Report</div>
+        <div style={{ color: MUTED, fontSize: 12, marginBottom: 12 }}>
+          Select a saved profile (coordinates required). Fetches live Replit chart JSON, runs Gemini (3 parts), then opens print/PDF.
+        </div>
+
+        <select
+          value={childDestinyProfileId}
+          onChange={(e) => setChildDestinyProfileId(e.target.value)}
+          style={{
+            background: 'rgba(0,0,0,0.3)',
+            border: '1px solid rgba(201,169,110,0.3)',
+            borderRadius: 8,
+            color: '#94a3b8',
+            padding: '10px 16px',
+            width: '100%',
+            marginBottom: 12,
+            cursor: 'pointer',
+            fontSize: 13,
+          }}
+        >
+          <option value="">-- Select user profile --</option>
+          {profiles.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name} ({p.userId.slice(0, 8)}…)
+            </option>
+          ))}
+        </select>
+
+        <button
+          type="button"
+          onClick={() => void handleChildDestinyReport()}
+          disabled={!childDestinyProfileId || childGenerating}
+          style={{
+            background: childGenerating ? 'rgba(201,169,110,0.3)' : 'rgba(201,169,110,0.15)',
+            border: '1px solid rgba(201,169,110,0.5)',
+            borderRadius: 8,
+            color: GOLD,
+            padding: '12px 24px',
+            cursor: childDestinyProfileId && !childGenerating ? 'pointer' : 'not-allowed',
+            fontWeight: 600,
+            fontSize: 14,
+            width: '100%',
+          }}
+        >
+          {childGenerating ? 'Generating report (multi-part)…' : 'Generate Child Destiny Report'}
+        </button>
+
+        {childReportStatus && (
+          <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 8, textAlign: 'center' }}>{childReportStatus}</div>
+        )}
+      </div>
+
+      <div
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
@@ -359,7 +468,13 @@ export default function AdminReportsHub({ backend, headers }: Props) {
             <div style={{ padding: '0 16px 16px' }}>
               <button
                 type="button"
-                onClick={() => openGenerate(tile)}
+                onClick={() => {
+                  if (tile.id === 'child_destiny') {
+                    document.getElementById('child-destiny-report-panel')?.scrollIntoView({ behavior: 'smooth' });
+                  } else {
+                    openGenerate(tile);
+                  }
+                }}
                 style={{
                   width: '100%',
                   padding: '10px 14px',
@@ -372,7 +487,7 @@ export default function AdminReportsHub({ backend, headers }: Props) {
                   fontSize: 13,
                 }}
               >
-                Generate →
+                {tile.id === 'child_destiny' ? 'Quick panel ↓' : 'Generate →'}
               </button>
             </div>
           </div>

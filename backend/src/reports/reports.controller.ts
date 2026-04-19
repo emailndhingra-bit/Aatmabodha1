@@ -1,7 +1,9 @@
 import { Controller, Get, Post, Body, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminGuard } from '../guards/admin.guard';
 import { ReportsService } from './reports.service';
 import { LogReportDto } from './dto/log-report.dto';
+import { GenerateChildDestinyDto } from './dto/generate-child-destiny.dto';
 
 @Controller('reports')
 export class ReportsController {
@@ -24,5 +26,11 @@ export class ReportsController {
       body.content,
       body.language,
     );
+  }
+
+  @Post('child-destiny')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  async generateChildDestiny(@Body() body: GenerateChildDestinyDto) {
+    return this.reportsService.generateChildDestiny(body.promptParts);
   }
 }

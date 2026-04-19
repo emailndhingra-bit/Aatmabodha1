@@ -2,12 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, Repository } from 'typeorm';
 import { Report } from './report.entity';
+import { GeminiService } from '../gemini/gemini.service';
 
 @Injectable()
 export class ReportsService {
   constructor(
     @InjectRepository(Report)
     private readonly repo: Repository<Report>,
+    private readonly gemini: GeminiService,
   ) {}
 
   async logReport(
@@ -91,5 +93,25 @@ export class ReportsService {
     d.setDate(diff);
     d.setHours(0, 0, 0, 0);
     return d;
+  }
+
+  /** Admin Child Destiny — multi-part Gemini generation */
+  async generateChildDestiny(promptParts: string[]): Promise<{ report: string }> {
+    const chunks: string[] = [];
+    for (const prompt of promptParts) {
+      const gen = await this.gemini.generateContent(
+        {
+          prompt,
+          responseFormat: 'text',
+          maxOutputTokens: 8192,
+          skipQuestionLog: true,
+          skipOutputTruncate: true,
+          skipInflightDedup: true,
+        },
+        undefined,
+      );
+      chunks.push(String(gen.text || '').trim());
+    }
+    return { report: chunks.join('\n\n---\n\n') };
   }
 }

@@ -20,6 +20,8 @@ import { GenerateAdminReportDto } from './dto/generate-admin-report.dto';
 import { GeneratedReportsService } from './generated-reports.service';
 import { ReportGenerationService } from './report-generation.service';
 import { ProfilesService } from '../profiles/profiles.service';
+import { ChartService } from '../chart/chart.service';
+import { chartPayloadFromProfileFields } from './chart-payload.util';
 
 @Controller('admin/reports-hub')
 @UseGuards(JwtAuthGuard, AdminGuard)
@@ -28,6 +30,7 @@ export class ReportsHubController {
     private readonly generated: GeneratedReportsService,
     private readonly generation: ReportGenerationService,
     private readonly profiles: ProfilesService,
+    private readonly charts: ChartService,
   ) {}
 
   @Get('stats')
@@ -38,6 +41,27 @@ export class ReportsHubController {
   @Get('profiles')
   async listProfiles(@Query('search') search?: string) {
     return this.profiles.listProfilesForReportsHub(search);
+  }
+
+  /** Raw Replit / chart-engine JSON for a saved profile (admin Reports Hub). */
+  @Get('profile/:profileId/chart')
+  async profileChart(@Param('profileId') profileId: string) {
+    const p = await this.profiles.findById(profileId);
+    if (!p) throw new BadRequestException('Profile not found');
+    const lat = p.latitude != null ? Number(p.latitude) : Number.NaN;
+    const lon = p.longitude != null ? Number(p.longitude) : Number.NaN;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      throw new BadRequestException('Profile missing coordinates');
+    }
+    const tz = p.timezone != null && String(p.timezone) !== '' ? parseFloat(String(p.timezone)) : 5.5;
+    const payload = chartPayloadFromProfileFields({
+      dateOfBirth: p.dateOfBirth,
+      timeOfBirth: p.timeOfBirth,
+      latitude: lat,
+      longitude: lon,
+      timezone: tz,
+    });
+    return this.charts.createChart(payload as any);
   }
 
   @Get('generated')

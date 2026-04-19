@@ -153,7 +153,9 @@ export class GeminiService {
       }
       const data = await res.json();
       let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      text = this.truncatePreservingSugg(text, String(prompt || ''));
+      if (!body.skipOutputTruncate) {
+        text = this.truncatePreservingSugg(text, String(prompt || ''));
+      }
 
       const fromUsage = this.costFromUsageMetadata(data);
       let inputTokens: number;
@@ -186,7 +188,7 @@ export class GeminiService {
       return { text, cacheHit: false, costUsd, inputTokens, outputTokens };
     };
 
-    if (imageParts.length > 0) {
+    if (imageParts.length > 0 || body.skipInflightDedup) {
       return run();
     }
 
