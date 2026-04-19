@@ -18,11 +18,19 @@ const TraditionalSummary: React.FC<Props> = ({ data }) => {
     return "Not Available";
   };
 
+  const getBalDasa = () => {
+    for (const k of ['Bal_Dasa', 'Bal Dasa', 'Bala_Dasa', 'Dasa_Balance'] as const) {
+      const v = getValue(k, avkahadaChakra, basicDetails);
+      if (v !== 'Not Available') return v;
+    }
+    return 'Not Available';
+  };
+
   const summaryData = [
     { label: 'Name', value: getValue('Name', basicDetails, avkahadaChakra) },
     { label: 'Paya', value: getValue('Paya', avkahadaChakra, basicDetails) },
     { label: 'Asc Lord', value: getValue('Lagna_Lord', avkahadaChakra, basicDetails) },
-    { label: 'Bal. Dasa', value: getValue('Dasa_Balance', avkahadaChakra, basicDetails) },
+    { label: 'Bal. Dasa', value: getBalDasa() },
     
     { label: 'Sex', value: getValue('Gender', basicDetails, avkahadaChakra) !== "Not Available" ? getValue('Gender', basicDetails, avkahadaChakra) : getValue('Sex', basicDetails, avkahadaChakra) },
     { label: 'Ayan Type', value: getValue('Ayanamsa_Name', avkahadaChakra, basicDetails) },

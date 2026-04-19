@@ -936,6 +936,16 @@ const App: React.FC = () => {
           if (avkahadaChakraObj.Sunset) {
               avkahadaChakraObj.Sunset = correctTime(avkahadaChakraObj.Sunset, correction);
           }
+          // Keep basicDetails in sync with avkahadaChakra (same object as parsed.Basic_Details / Traditional)
+          const basicDetailsObj = parsed.Basic_Details || parsed.Traditional;
+          if (basicDetailsObj) {
+              if (avkahadaChakraObj.Sunrise) {
+                  basicDetailsObj.Sunrise = avkahadaChakraObj.Sunrise;
+              }
+              if (avkahadaChakraObj.Sunset) {
+                  basicDetailsObj.Sunset = avkahadaChakraObj.Sunset;
+              }
+          }
       }
       
       parsed.Avakahada_Chakra = avkahadaChakraObj;

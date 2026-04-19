@@ -118,6 +118,15 @@ function enrichRawData(parsed: any, tzOffset: number, longitudeStr: string) {
     };
     if (avkahadaChakraObj.Sunrise) avkahadaChakraObj.Sunrise = correctTime(avkahadaChakraObj.Sunrise, correction);
     if (avkahadaChakraObj.Sunset) avkahadaChakraObj.Sunset = correctTime(avkahadaChakraObj.Sunset, correction);
+    const basicDetailsObj = parsed.Basic_Details || parsed.Traditional;
+    if (basicDetailsObj) {
+      if (avkahadaChakraObj.Sunrise) {
+        basicDetailsObj.Sunrise = avkahadaChakraObj.Sunrise;
+      }
+      if (avkahadaChakraObj.Sunset) {
+        basicDetailsObj.Sunset = avkahadaChakraObj.Sunset;
+      }
+    }
   }
   parsed.Avakahada_Chakra = avkahadaChakraObj;
   parsed.avkahadaChakra = avkahadaChakraObj;
