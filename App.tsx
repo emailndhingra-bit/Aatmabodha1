@@ -868,33 +868,40 @@ const App: React.FC = () => {
           const moonLon = (signNum - 1) * 30 + degVal;
           const nakNum = Math.floor(moonLon / (360/27)) + 1;
           const PAYA_MAP: Record<number, string> = {
-              1:"Gold",    // Ashwini
-              2:"Gold",    // Bharani
-              3:"Gold",    // Krittika
-              4:"Silver",  // Rohini
-              5:"Silver",  // Mrigashira
-              6:"Silver",  // Ardra
-              7:"Silver",  // Punarvasu
-              8:"Gold",    // Pushya
-              9:"Silver",  // Ashlesha
-              10:"Gold",   // Magha
-              11:"Gold",   // Purva Phalguni
-              12:"Silver", // Uttara Phalguni
-              13:"Copper", // Hasta
-              14:"Copper", // Chitra
-              15:"Gold",   // Swati
-              16:"Gold",   // Vishakha
-              17:"Gold",   // Anuradha
-              18:"Copper", // Jyeshtha
-              19:"Copper", // Mula
-              20:"Gold",   // Purva Ashadha
-              21:"Gold",   // Uttara Ashadha
-              22:"Silver", // Shravana
-              23:"Silver", // Dhanishtha
-              24:"Iron",   // Shatabhisha
-              25:"Iron",   // Purva Bhadrapada
-              26:"Silver", // Uttara Bhadrapada
-              27:"Silver", // Revati
+              // GOLD (3 nakshatras): Ashwini, Bharani, Revati
+              1: "Gold", // Ashwini
+              2: "Gold", // Bharani
+              27: "Gold", // Revati
+
+              // IRON (3 nakshatras): Kritika, Rohini, Mrigashira
+              3: "Iron", // Kritika
+              4: "Iron", // Rohini
+              5: "Iron", // Mrigashira
+
+              // SILVER (12 nakshatras): Ardra → Anuradha
+              6: "Silver", // Ardra
+              7: "Silver", // Punarvasu
+              8: "Silver", // Pushya
+              9: "Silver", // Ashlesha
+              10: "Silver", // Magha
+              11: "Silver", // Purva Phalguni
+              12: "Silver", // Uttara Phalguni
+              13: "Silver", // Hasta
+              14: "Silver", // Chitra
+              15: "Silver", // Swati
+              16: "Silver", // Vishakha
+              17: "Silver", // Anuradha
+
+              // COPPER (9 nakshatras): Jyeshtha → Uttara Bhadrapada
+              18: "Copper", // Jyeshtha
+              19: "Copper", // Moola
+              20: "Copper", // Purva Ashadha
+              21: "Copper", // Uttara Ashadha
+              22: "Copper", // Shravana
+              23: "Copper", // Dhanishta
+              24: "Copper", // Shatabhisha
+              25: "Copper", // Purva Bhadrapada
+              26: "Copper", // Uttara Bhadrapada
           };
           avkahadaChakraObj.Paya = PAYA_MAP[nakNum];
       }
