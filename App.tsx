@@ -506,12 +506,69 @@ const App: React.FC = () => {
       // Save chart context for analytics
       try {
         const data = finalData as any;
+        const str = (v: unknown): string | null =>
+          typeof v === "string" && v.trim() ? v.trim() : null;
+        const planetish = (v: unknown): string | null => {
+          if (v == null) return null;
+          if (typeof v === "string" && v.trim()) return v.trim();
+          if (typeof v === "object" && v !== null && "planet" in v) {
+            const p = (v as { planet?: unknown }).planet;
+            return str(p);
+          }
+          return null;
+        };
+        const userAtmakaraka =
+          planetish(data?.jaimini?.AK) ||
+          str(typeof data?.jaimini?.AK === "string" ? data.jaimini.AK : undefined) ||
+          str(data?.jaimini?.AK?.planet) ||
+          str(data?.avkahadaChakra?.Atmakaraka) ||
+          str(data?.avkahadaChakra?.atmakaraka) ||
+          str(data?.avkahadaChakra?.AK) ||
+          planetish(data?.AK) ||
+          str(typeof data?.AK === "string" ? data.AK : undefined) ||
+          str(data?.AK?.planet) ||
+          planetish(data?.atmakaraka) ||
+          str(data?.atmakaraka?.planet) ||
+          null;
+        const vd0 = data?.dashas?.VD?.[0];
+        const vimSys = Array.isArray(data?.dashas)
+          ? (data.dashas as unknown[]).find((x: unknown) =>
+              String((x as { systemName?: string })?.systemName || "")
+                .toLowerCase()
+                .includes("vimshottari"),
+            )
+          : undefined;
+        const vimP0 =
+          vimSys && typeof vimSys === "object" && vimSys !== null && "periods" in vimSys
+            ? (vimSys as { periods?: { name?: string }[] }).periods?.[0]
+            : undefined;
+        const vimName = str(vimP0?.name);
+        const mdFromVd = str(vd0?.mdLord) || str(vd0?.lord) || str(vd0?.md_lord);
+        const adFromVd = str(vd0?.adLord) || str(vd0?.ad_lord);
+        const userDashaType =
+          mdFromVd ||
+          (vimName ? vimName.split(/\s*-\s*/)[0]?.trim() || null : null) ||
+          null;
+        const dashaFromVd =
+          mdFromVd && adFromVd
+            ? `${mdFromVd}-${adFromVd}`
+            : mdFromVd || null;
+        const dashaFromVim =
+          vimName?.replace(/\s*-\s*/g, "-").replace(/\s+/g, "") || null;
         const chartCtx = {
-          userMoonSign: data?.avakahada?.Rasi || data?.avkahadaChakra?.Rasi || null,
-          userLagna: data?.avakahada?.Lagna || data?.avkahadaChakra?.Lagna || null,
-          userAtmakaraka: data?.AK || null,
-          userSadeSati: data?.sadeSati || false,
-          userDashaType: data?.dashas?.VD?.[0]?.mdLord || null,
+          userMoonSign:
+            str(data?.avakahada?.Rasi) ||
+            str(data?.avkahadaChakra?.Rasi) ||
+            str(data?.avkahadaChakra?.Moon_Rasi) ||
+            null,
+          userLagna:
+            str(data?.avakahada?.Lagna) ||
+            str(data?.avkahadaChakra?.Lagna) ||
+            str(data?.avkahadaChakra?.Lagna_Sign) ||
+            null,
+          userAtmakaraka,
+          userSadeSati: Boolean(data?.sadeSati ?? data?.SadeSati ?? false),
+          userDashaType,
           ageGroup: (() => {
             const dobStr = dob || "";
             const d = new Date(dobStr);
@@ -521,9 +578,7 @@ const App: React.FC = () => {
             if (age <= 55) return "GEN_X";
             return "SENIOR";
           })(),
-          dashaAtTime: data?.dashas?.VD?.[0]
-            ? `${data.dashas.VD[0].mdLord}-${data.dashas.VD[0].adLord}`
-            : null,
+          dashaAtTime: dashaFromVd || dashaFromVim || null,
         };
         localStorage.setItem(
           "aatmabodha_chart_context",
