@@ -144,8 +144,12 @@ type StatsLog = {
   moonSignAtTime?: string | null;
   userMoonSign?: string | null;
   userLagna?: string | null;
+  userAtmakaraka?: string | null;
   userSadeSati?: boolean | null;
+  userDashaType?: string | null;
   ageGroup?: string | null;
+  returnedAfterDays?: number | null;
+  prevCategory?: string | null;
 };
 
 function normalizeLogs(stats: any): StatsLog[] {
@@ -164,10 +168,14 @@ function normalizeLogs(stats: any): StatsLog[] {
     sessionId: r.sessionId ?? null,
     dashaAtTime: r.dashaAtTime ?? null,
     moonSignAtTime: r.moonSignAtTime ?? null,
-    userMoonSign: r.userMoonSign ?? null,
-    userLagna: r.userLagna ?? null,
-    userSadeSati: r.userSadeSati ?? null,
-    ageGroup: r.ageGroup ?? null,
+    userMoonSign: (r as any).userMoonSign ?? null,
+    userLagna: (r as any).userLagna ?? null,
+    userAtmakaraka: (r as any).userAtmakaraka ?? null,
+    userSadeSati: (r as any).userSadeSati ?? null,
+    userDashaType: (r as any).userDashaType ?? null,
+    ageGroup: (r as any).ageGroup ?? null,
+    returnedAfterDays: (r as any).returnedAfterDays ?? null,
+    prevCategory: (r as any).prevCategory ?? null,
   }));
 }
 
@@ -187,6 +195,28 @@ function isSameMonth(a: Date, b: Date): boolean {
 
 function buildAnalyticsModel(stats: any, users: any[]) {
   const logs = normalizeLogs(stats);
+  const USD_TO_INR_LOCAL = 83;
+  const todayCostInr = Number(stats?.todayCostUsd ?? 0) * USD_TO_INR_LOCAL;
+  const weekCostInr = Number(stats?.weekCostUsd ?? 0) * USD_TO_INR_LOCAL;
+  const monthCostInr = Number(stats?.monthCostUsd ?? 0) * USD_TO_INR_LOCAL;
+  const todayQueries = Number(stats?.todayQueries ?? 0);
+  const peakHoursDataRaw: { hour: number; total: number; distressed: number }[] = Array.isArray(stats?.peakHours)
+    ? stats.peakHours
+    : [];
+  const peakByHour = new Map<number, { hour: number; total: number; distressed: number }>();
+  for (const r of peakHoursDataRaw) {
+    const h = Number(r.hour);
+    peakByHour.set(h, {
+      hour: h,
+      total: Number(r.total) || 0,
+      distressed: Number(r.distressed) || 0,
+    });
+  }
+  const peakHoursData = Array.from({ length: 24 }, (_, h) => peakByHour.get(h) ?? { hour: h, total: 0, distressed: 0 });
+  const returnedDist: { days: number; cnt: number }[] = Array.isArray(stats?.returnedDist) ? stats.returnedDist : [];
+  const newUsers = logs.filter((r) => r.returnedAfterDays === 0 || r.returnedAfterDays == null).length;
+  const returningUsers = logs.filter((r) => r.returnedAfterDays != null && r.returnedAfterDays > 0).length;
+
   const totalQuestions = Number(stats?.totalQuestions ?? 0);
   const totalCostUsd = Number(stats?.totalCost ?? 0);
   const cacheHits = Number(stats?.cacheHits ?? 0);
@@ -367,6 +397,14 @@ function buildAnalyticsModel(stats: any, users: any[]) {
     monthHits,
     monthLogsLen: monthLogs.length,
     missTrend,
+    todayCostInr,
+    weekCostInr,
+    monthCostInr,
+    todayQueries,
+    peakHoursData,
+    returnedDist,
+    newUsers,
+    returningUsers,
   };
 }
 
@@ -597,8 +635,44 @@ function planetFromDasha(d: string | null | undefined): string | null {
 
 function buildProjectKarmaModel(stats: any) {
   const logs = normalizeLogs(stats);
-  const sample = logs.length;
   const records = Number(stats?.totalQuestions ?? 0);
+  const sample = logs.length;
+
+  // Real astrological distributions from DB aggregates
+  const moonSignDist: { sign: string; cnt: number }[] = Array.isArray(stats?.moonSignDist) ? stats.moonSignDist : [];
+  const lagnaDist: { sign: string; cnt: number }[] = Array.isArray(stats?.lagnaDist) ? stats.lagnaDist : [];
+  const akDist: { planet: string; cnt: number }[] = Array.isArray(stats?.akDist) ? stats.akDist : [];
+  const dashaDist: { dasha: string; cnt: number }[] = Array.isArray(stats?.dashaDist) ? stats.dashaDist : [];
+  const sadeSatiCount = Number(stats?.sadeSatiCount ?? 0);
+  const sadeSatiPct = records > 0 ? Math.round((sadeSatiCount / records) * 100) : 0;
+  const dashaCatMatrix: { dasha: string; cat: string; cnt: number }[] = Array.isArray(stats?.dashaCatMatrix)
+    ? stats.dashaCatMatrix
+    : [];
+  const emotionAgeDist: { tone: string; age: string; cnt: number }[] = Array.isArray(stats?.emotionAgeDist)
+    ? stats.emotionAgeDist
+    : [];
+  const peakHoursDataRaw: { hour: number; total: number; distressed: number }[] = Array.isArray(stats?.peakHours)
+    ? stats.peakHours
+    : [];
+  const peakByHourK = new Map<number, { hour: number; total: number; distressed: number }>();
+  for (const r of peakHoursDataRaw) {
+    const h = Number(r.hour);
+    peakByHourK.set(h, {
+      hour: h,
+      total: Number(r.total) || 0,
+      distressed: Number(r.distressed) || 0,
+    });
+  }
+  const peakHoursData = Array.from({ length: 24 }, (_, h) => peakByHourK.get(h) ?? { hour: h, total: 0, distressed: 0 });
+
+  // High value signals
+  const desperateMarriage = logs.filter(
+    (l) => normCategory(l.questionCategory) === 'MARRIAGE' && normTone(l.emotionalTone) === 'DESPERATE',
+  ).length;
+  const urgentCareer = logs.filter(
+    (l) => normCategory(l.questionCategory) === 'CAREER' && normTone(l.emotionalTone) === 'URGENT',
+  ).length;
+
   const estRupee = (records / 2_000_000) * 50_000_000;
   const estLakh = estRupee / 100_000;
   const pct = (pred: (l: StatsLog) => boolean) =>
@@ -845,6 +919,17 @@ function buildProjectKarmaModel(stats: any) {
     enUrgentFrac: urgentFrac(en),
     hiAvgCost: avgCostInr(hi),
     enAvgCost: avgCostInr(en),
+    moonSignDist,
+    lagnaDist,
+    akDist,
+    dashaDist,
+    sadeSatiCount,
+    sadeSatiPct,
+    dashaCatMatrix,
+    emotionAgeDist,
+    peakHoursData,
+    desperateMarriage,
+    urgentCareer,
   };
 }
 
@@ -2091,7 +2176,7 @@ export default function AdminDashboard() {
                 Oracle analytics
               </h2>
               <p style={{ color: '#7a7a8c', fontSize: 12, margin: '6px 0 0' }}>
-                KPIs from DB totals · charts from recent <code style={{ color: '#9a9aaa' }}>logs</code> sample (up to 200 rows)
+                KPIs from DB totals · charts from recent <code style={{ color: '#9a9aaa' }}>logs</code> sample (up to 2000 rows)
               </p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -2125,6 +2210,171 @@ export default function AdminDashboard() {
             <div style={{ color: '#888', padding: 40, textAlign: 'center' }}>Load stats to view analytics.</div>
           ) : (
             <>
+              {/* COST COMMAND CENTER */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gap: '12px',
+                  marginBottom: '20px',
+                }}
+              >
+                {[
+                  {
+                    label: 'Today',
+                    value: `₹${analyticsModel.todayCostInr?.toFixed(2) ?? '0.00'}`,
+                    sub: `${analyticsModel.todayQueries ?? 0} queries`,
+                    color: '#c9a96e',
+                  },
+                  {
+                    label: 'This Week',
+                    value: `₹${analyticsModel.weekCostInr?.toFixed(2) ?? '0.00'}`,
+                    sub: `vs ₹${analyticsModel.totalCostInr?.toFixed(0)} total`,
+                    color: '#818cf8',
+                  },
+                  {
+                    label: 'This Month',
+                    value: `₹${analyticsModel.monthCostInr?.toFixed(2) ?? '0.00'}`,
+                    sub: `cache saved ₹${analyticsModel.cacheSavedInrHeuristic?.toFixed(0)}`,
+                    color: '#34d399',
+                  },
+                  {
+                    label: 'Cache HIT %',
+                    value: `${analyticsModel.cacheHitRatePct?.toFixed(1)}%`,
+                    sub:
+                      analyticsModel.cacheHitRatePct >= 60
+                        ? '✅ Excellent'
+                        : analyticsModel.cacheHitRatePct >= 40
+                          ? '⚠️ Moderate'
+                          : '🔴 Low',
+                    color:
+                      analyticsModel.cacheHitRatePct >= 60
+                        ? '#34d399'
+                        : analyticsModel.cacheHitRatePct >= 40
+                          ? '#f97316'
+                          : '#ef4444',
+                  },
+                ].map((card) => (
+                  <div
+                    key={card.label}
+                    style={{
+                      background: 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${card.color}40`,
+                      borderRadius: '12px',
+                      padding: '16px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: '#94a3b8',
+                        fontSize: '11px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '1px',
+                      }}
+                    >
+                      {card.label}
+                    </div>
+                    <div style={{ color: card.color, fontSize: '24px', fontWeight: 700, margin: '8px 0 4px' }}>
+                      {card.value}
+                    </div>
+                    <div style={{ color: '#64748b', fontSize: '11px' }}>{card.sub}</div>
+                  </div>
+                ))}
+              </div>
+
+              {analyticsModel.peakHoursData && analyticsModel.peakHoursData.length > 0 && (
+                <div
+                  style={{
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    marginBottom: '20px',
+                  }}
+                >
+                  <div style={{ color: '#c9a96e', fontWeight: 600, marginBottom: '12px' }}>📊 Queries by Hour (IST)</div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '80px' }}>
+                    {analyticsModel.peakHoursData.map((h) => {
+                      const maxTotal = Math.max(1, ...analyticsModel.peakHoursData.map((x) => x.total));
+                      const height = Math.round((h.total / maxTotal) * 80);
+                      const distressRatio = h.total > 0 ? h.distressed / h.total : 0;
+                      return (
+                        <div
+                          key={h.hour}
+                          title={`${h.hour}:00 — ${h.total} queries, ${h.distressed} distressed`}
+                          style={{
+                            flex: 1,
+                            height: `${Math.max(2, height)}px`,
+                            background:
+                              distressRatio > 0.5 ? '#ef4444' : distressRatio > 0.3 ? '#f97316' : '#818cf8',
+                            borderRadius: '2px 2px 0 0',
+                            cursor: 'pointer',
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      color: '#475569',
+                      fontSize: '10px',
+                      marginTop: '4px',
+                    }}
+                  >
+                    <span>12AM</span>
+                    <span>6AM</span>
+                    <span>12PM</span>
+                    <span>6PM</span>
+                    <span>11PM</span>
+                  </div>
+                  <div style={{ marginTop: '8px', fontSize: '11px', color: '#64748b' }}>
+                    🔴 Red = {'>'} 50% distressed queries at that hour
+                  </div>
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '12px',
+                  marginBottom: '20px',
+                }}
+              >
+                <div
+                  style={{
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(129,140,248,0.3)',
+                    borderRadius: '12px',
+                    padding: '16px',
+                  }}
+                >
+                  <div style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>
+                    New Users (in sample)
+                  </div>
+                  <div style={{ color: '#818cf8', fontSize: '28px', fontWeight: 700, margin: '8px 0' }}>
+                    {analyticsModel.newUsers ?? 0}
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '11px' }}>First-time queries</div>
+                </div>
+                <div
+                  style={{
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(201,169,110,0.3)',
+                    borderRadius: '12px',
+                    padding: '16px',
+                  }}
+                >
+                  <div style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>Returning Users</div>
+                  <div style={{ color: '#c9a96e', fontSize: '28px', fontWeight: 700, margin: '8px 0' }}>
+                    {analyticsModel.returningUsers ?? 0}
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '11px' }}>Came back after first query</div>
+                </div>
+              </div>
+
               {/* SECTION 1 — KPI */}
               <div
                 style={{
@@ -2651,6 +2901,261 @@ export default function AdminDashboard() {
             <div style={{ color: '#888', padding: 40, textAlign: 'center' }}>Load stats to view Project Karma.</div>
           ) : (
             <>
+              {karmaModel.moonSignDist && karmaModel.moonSignDist.length > 0 && (
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ color: '#c9a96e', fontWeight: 600, marginBottom: '12px', fontSize: '14px' }}>
+                    🌙 Moon Sign Distribution
+                    <span style={{ color: '#64748b', fontWeight: 400, fontSize: '11px', marginLeft: '8px' }}>
+                      (from DB — real data)
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {karmaModel.moonSignDist.slice(0, 12).map((item) => (
+                      <div
+                        key={item.sign}
+                        style={{
+                          background: 'rgba(201,169,110,0.1)',
+                          border: '1px solid rgba(201,169,110,0.3)',
+                          borderRadius: '8px',
+                          padding: '8px 12px',
+                          minWidth: '80px',
+                          textAlign: 'center',
+                        }}
+                      >
+                        <div style={{ color: '#c9a96e', fontWeight: 700, fontSize: '18px' }}>{item.cnt}</div>
+                        <div style={{ color: '#94a3b8', fontSize: '10px', marginTop: '2px' }}>{item.sign}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {karmaModel.akDist && karmaModel.akDist.length > 0 && (
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ color: '#818cf8', fontWeight: 600, marginBottom: '12px', fontSize: '14px' }}>
+                    ⭐ Atmakaraka Distribution
+                    <span style={{ color: '#64748b', fontWeight: 400, fontSize: '11px', marginLeft: '8px' }}>
+                      (soul planet of users)
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {karmaModel.akDist.map((item) => (
+                      <div
+                        key={item.planet}
+                        style={{
+                          background: 'rgba(129,140,248,0.1)',
+                          border: '1px solid rgba(129,140,248,0.3)',
+                          borderRadius: '8px',
+                          padding: '8px 16px',
+                          textAlign: 'center',
+                        }}
+                      >
+                        <div style={{ color: '#818cf8', fontWeight: 700, fontSize: '20px' }}>{item.cnt}</div>
+                        <div style={{ color: '#94a3b8', fontSize: '10px', marginTop: '2px' }}>{item.planet}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '12px',
+                  marginBottom: '20px',
+                }}
+              >
+                <div
+                  style={{
+                    background: 'rgba(239,68,68,0.1)',
+                    border: '1px solid rgba(239,68,68,0.3)',
+                    borderRadius: '12px',
+                    padding: '16px',
+                  }}
+                >
+                  <div style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>Sade Sati Users</div>
+                  <div style={{ color: '#ef4444', fontSize: '28px', fontWeight: 700, margin: '8px 0' }}>
+                    {karmaModel.sadeSatiPct ?? 0}%
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '11px' }}>
+                    {karmaModel.sadeSatiCount ?? 0} users in Saturn affliction
+                  </div>
+                </div>
+                <div
+                  style={{
+                    background: 'rgba(249,115,22,0.1)',
+                    border: '1px solid rgba(249,115,22,0.3)',
+                    borderRadius: '12px',
+                    padding: '16px',
+                  }}
+                >
+                  <div style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>Desperate + Marriage</div>
+                  <div style={{ color: '#f97316', fontSize: '28px', fontWeight: 700, margin: '8px 0' }}>
+                    {karmaModel.desperateMarriage ?? 0}
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '11px' }}>Highest urgency queries</div>
+                </div>
+                <div
+                  style={{
+                    background: 'rgba(234,179,8,0.1)',
+                    border: '1px solid rgba(234,179,8,0.3)',
+                    borderRadius: '12px',
+                    padding: '16px',
+                  }}
+                >
+                  <div style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase' }}>Urgent + Career</div>
+                  <div style={{ color: '#eab308', fontSize: '28px', fontWeight: 700, margin: '8px 0' }}>
+                    {karmaModel.urgentCareer ?? 0}
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '11px' }}>Time-pressure career queries</div>
+                </div>
+              </div>
+
+              {karmaModel.dashaDist && karmaModel.dashaDist.length > 0 && (
+                <div
+                  style={{
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    marginBottom: '20px',
+                  }}
+                >
+                  <div style={{ color: '#34d399', fontWeight: 600, marginBottom: '12px' }}>🪐 Active Dasha Distribution</div>
+                  {karmaModel.dashaDist.map((item) => {
+                    const max = Math.max(1, ...karmaModel.dashaDist.map((x) => x.cnt));
+                    return (
+                      <div key={item.dasha} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                        <div style={{ width: '80px', color: '#94a3b8', fontSize: '12px', textAlign: 'right' }}>
+                          {item.dasha}
+                        </div>
+                        <div
+                          style={{
+                            flex: 1,
+                            background: 'rgba(255,255,255,0.05)',
+                            borderRadius: '4px',
+                            height: '20px',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${Math.round((item.cnt / max) * 100)}%`,
+                              height: '100%',
+                              background: '#34d399',
+                              borderRadius: '4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              paddingLeft: '6px',
+                            }}
+                          >
+                            <span style={{ color: '#000', fontSize: '10px', fontWeight: 700 }}>{item.cnt}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(201,169,110,0.2)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  marginBottom: '20px',
+                }}
+              >
+                <div style={{ color: '#c9a96e', fontWeight: 600, marginBottom: '12px' }}>📦 Export Anonymized Datasets</div>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  {[
+                    {
+                      label: 'Behavioral Dataset',
+                      desc: 'Category + Emotion + Dasha + Age',
+                      onClick: () => {
+                        const rows = karmaModel.logs.map((l: StatsLog) => ({
+                          questionCategory: l.questionCategory || '',
+                          emotionalTone: l.emotionalTone || '',
+                          userDashaType: l.userDashaType || '',
+                          ageGroup: l.ageGroup || '',
+                          sessionDepth: l.sessionDepth ?? '',
+                          returnedAfterDays: l.returnedAfterDays ?? '',
+                          prevCategory: l.prevCategory || '',
+                          language: l.language || '',
+                        }));
+                        if (!rows.length) {
+                          alert('No data to export');
+                          return;
+                        }
+                        const csv = [Object.keys(rows[0]).join(','), ...rows.map((r) => Object.values(r).join(','))].join(
+                          '\n',
+                        );
+                        const blob = new Blob([csv], { type: 'text/csv' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `aatmabodha_behavioral_${new Date().toISOString().slice(0, 10)}.csv`;
+                        a.click();
+                      },
+                    },
+                    {
+                      label: 'Astrological Dataset',
+                      desc: 'Moon + Lagna + AK + Dasha + SadeSati',
+                      onClick: () => {
+                        const rows = karmaModel.logs
+                          .filter((l) => l.userMoonSign || l.userLagna)
+                          .map((l: StatsLog) => ({
+                            userMoonSign: l.userMoonSign || '',
+                            userLagna: l.userLagna || '',
+                            userAtmakaraka: l.userAtmakaraka || '',
+                            userDashaType: l.userDashaType || '',
+                            dashaAtTime: l.dashaAtTime || '',
+                            userSadeSati: l.userSadeSati ?? '',
+                            ageGroup: l.ageGroup || '',
+                            questionCategory: l.questionCategory || '',
+                            emotionalTone: l.emotionalTone || '',
+                          }));
+                        if (!rows.length) {
+                          alert('No astrological data yet — generate charts first');
+                          return;
+                        }
+                        const csv = [Object.keys(rows[0]).join(','), ...rows.map((r) => Object.values(r).join(','))].join(
+                          '\n',
+                        );
+                        const blob = new Blob([csv], { type: 'text/csv' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `aatmabodha_astro_${new Date().toISOString().slice(0, 10)}.csv`;
+                        a.click();
+                      },
+                    },
+                  ].map((btn) => (
+                    <div key={btn.label}>
+                      <button
+                        type="button"
+                        onClick={btn.onClick}
+                        style={{
+                          background: 'rgba(201,169,110,0.15)',
+                          border: '1px solid rgba(201,169,110,0.4)',
+                          borderRadius: '8px',
+                          color: '#c9a96e',
+                          padding: '10px 16px',
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                          fontSize: '13px',
+                        }}
+                      >
+                        ⬇ {btn.label}
+                      </button>
+                      <div style={{ color: '#475569', fontSize: '10px', marginTop: '4px' }}>{btn.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* SECTION 1 — Moat header */}
               <div
                 style={{

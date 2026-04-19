@@ -377,9 +377,143 @@ export class QuestionsService {
 
     const cacheHits = await this.repo.count({ where: { cacheHit: true } });
 
-    const logs = await this.repo.find({ order: { createdAt: 'DESC' }, take: 200 });
     const avgCostPerQuestion =
       totalQuestions > 0 ? totalCost / totalQuestions : 0;
+
+    // Increase to 2000 rows for accurate distributions
+    const logs = await this.repo.find({
+      order: { createdAt: 'DESC' },
+      take: 2000,
+    });
+
+    // ─── TODAY / WEEK / MONTH cost metrics ───
+    const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - 7);
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [todayRow, weekRow, monthRow] = await Promise.all([
+      this.repo
+        .createQueryBuilder('q')
+        .select('COALESCE(SUM(q.costUsd),0)', 'cost')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('q.createdAt >= :d', { d: startOfToday })
+        .getRawOne<{ cost: string; cnt: string }>(),
+      this.repo
+        .createQueryBuilder('q')
+        .select('COALESCE(SUM(q.costUsd),0)', 'cost')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('q.createdAt >= :d', { d: startOfWeek })
+        .getRawOne<{ cost: string; cnt: string }>(),
+      this.repo
+        .createQueryBuilder('q')
+        .select('COALESCE(SUM(q.costUsd),0)', 'cost')
+        .addSelect('COUNT(*)', 'cnt')
+        .where('q.createdAt >= :d', { d: startOfMonth })
+        .getRawOne<{ cost: string; cnt: string }>(),
+    ]);
+
+    const todayCostUsd = parseFloat(String(todayRow?.cost ?? 0)) || 0;
+    const todayQueries = parseInt(String(todayRow?.cnt ?? 0), 10) || 0;
+    const weekCostUsd = parseFloat(String(weekRow?.cost ?? 0)) || 0;
+    const monthCostUsd = parseFloat(String(monthRow?.cost ?? 0)) || 0;
+
+    // ─── Astrological distributions ───
+    const moonSignRaw = await this.repo
+      .createQueryBuilder('q')
+      .select('q.userMoonSign', 'sign')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('q.userMoonSign IS NOT NULL')
+      .andWhere("q.userMoonSign != ''")
+      .groupBy('q.userMoonSign')
+      .orderBy('cnt', 'DESC')
+      .getRawMany<{ sign: string; cnt: string }>();
+
+    const lagnaRaw = await this.repo
+      .createQueryBuilder('q')
+      .select('q.userLagna', 'sign')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('q.userLagna IS NOT NULL')
+      .andWhere("q.userLagna != ''")
+      .groupBy('q.userLagna')
+      .orderBy('cnt', 'DESC')
+      .getRawMany<{ sign: string; cnt: string }>();
+
+    const akRaw = await this.repo
+      .createQueryBuilder('q')
+      .select('q.userAtmakaraka', 'planet')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('q.userAtmakaraka IS NOT NULL')
+      .andWhere("q.userAtmakaraka != ''")
+      .groupBy('q.userAtmakaraka')
+      .orderBy('cnt', 'DESC')
+      .getRawMany<{ planet: string; cnt: string }>();
+
+    const dashaRaw = await this.repo
+      .createQueryBuilder('q')
+      .select('q.userDashaType', 'dasha')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('q.userDashaType IS NOT NULL')
+      .andWhere("q.userDashaType != ''")
+      .groupBy('q.userDashaType')
+      .orderBy('cnt', 'DESC')
+      .getRawMany<{ dasha: string; cnt: string }>();
+
+    const sadeSatiCount = await this.repo.count({
+      where: { userSadeSati: true },
+    });
+
+    // ─── Dasha × Category matrix ───
+    const dashaCatRaw = await this.repo
+      .createQueryBuilder('q')
+      .select('q.userDashaType', 'dasha')
+      .addSelect('q.questionCategory', 'cat')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('q.userDashaType IS NOT NULL')
+      .andWhere('q.questionCategory IS NOT NULL')
+      .groupBy('q.userDashaType')
+      .addGroupBy('q.questionCategory')
+      .getRawMany<{ dasha: string; cat: string; cnt: string }>();
+
+    // ─── Emotion × AgeGroup matrix ───
+    const emotionAgeRaw = await this.repo
+      .createQueryBuilder('q')
+      .select('q.emotionalTone', 'tone')
+      .addSelect('q.ageGroup', 'age')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('q.emotionalTone IS NOT NULL')
+      .andWhere('q.ageGroup IS NOT NULL')
+      .groupBy('q.emotionalTone')
+      .addGroupBy('q.ageGroup')
+      .getRawMany<{ tone: string; age: string; cnt: string }>();
+
+    // ─── Peak hours with distress ───
+    const peakHoursRaw = await this.repo
+      .createQueryBuilder('q')
+      .select('EXTRACT(HOUR FROM q."createdAt")::int', 'hour')
+      .addSelect('COUNT(*)', 'total')
+      .addSelect(
+        "COUNT(*) FILTER (WHERE q.emotionalTone IN ('ANXIOUS','DESPERATE','URGENT'))",
+        'distressed',
+      )
+      .groupBy('EXTRACT(HOUR FROM q."createdAt")')
+      .orderBy('EXTRACT(HOUR FROM q."createdAt")', 'ASC')
+      .getRawMany<{ hour: string; total: string; distressed: string }>();
+
+    // ─── Return rate ───
+    const returnedRaw = await this.repo
+      .createQueryBuilder('q')
+      .select('q.returnedAfterDays', 'days')
+      .addSelect('COUNT(*)', 'cnt')
+      .where('q.returnedAfterDays IS NOT NULL')
+      .groupBy('q.returnedAfterDays')
+      .orderBy('q.returnedAfterDays', 'ASC')
+      .getRawMany<{ days: number; cnt: string }>();
 
     return {
       logs,
@@ -387,6 +521,47 @@ export class QuestionsService {
       totalQuestions,
       cacheHits,
       avgCostPerQuestion,
+      // New aggregates
+      todayCostUsd,
+      todayQueries,
+      weekCostUsd,
+      monthCostUsd,
+      moonSignDist: moonSignRaw.map((r) => ({
+        sign: r.sign,
+        cnt: parseInt(String(r.cnt), 10),
+      })),
+      lagnaDist: lagnaRaw.map((r) => ({
+        sign: r.sign,
+        cnt: parseInt(String(r.cnt), 10),
+      })),
+      akDist: akRaw.map((r) => ({
+        planet: r.planet,
+        cnt: parseInt(String(r.cnt), 10),
+      })),
+      dashaDist: dashaRaw.map((r) => ({
+        dasha: r.dasha,
+        cnt: parseInt(String(r.cnt), 10),
+      })),
+      sadeSatiCount,
+      dashaCatMatrix: dashaCatRaw.map((r) => ({
+        dasha: r.dasha,
+        cat: r.cat,
+        cnt: parseInt(String(r.cnt), 10),
+      })),
+      emotionAgeDist: emotionAgeRaw.map((r) => ({
+        tone: r.tone,
+        age: r.age,
+        cnt: parseInt(String(r.cnt), 10),
+      })),
+      peakHours: peakHoursRaw.map((r) => ({
+        hour: Number(r.hour),
+        total: parseInt(String(r.total), 10),
+        distressed: parseInt(String(r.distressed), 10),
+      })),
+      returnedDist: returnedRaw.map((r) => ({
+        days: Number(r.days),
+        cnt: parseInt(String(r.cnt), 10),
+      })),
     };
   }
 
