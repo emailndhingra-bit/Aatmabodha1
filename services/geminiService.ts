@@ -211,8 +211,12 @@ const callGeminiChat = async (
                 ...(typeof window !== "undefined" &&
                     (() => {
                       try {
+                        const authRaw2 = localStorage.getItem('auth_user');
+                        const authId2 = authRaw2
+                          ? (JSON.parse(authRaw2) as {id?:string})?.id || 'guest'
+                          : 'guest';
                         const ctx = localStorage.getItem(
-                          "aatmabodha_chart_context",
+                          `aatmabodha_chart_context_${authId2}`,
                         );
                         return ctx ? { chartContext: JSON.parse(ctx) } : {};
                       } catch {

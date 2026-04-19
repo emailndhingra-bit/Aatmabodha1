@@ -503,96 +503,74 @@ const App: React.FC = () => {
     },
   ) => {
       setData(finalData);
-      // Save chart context for analytics
-      try {
-        const data = finalData as any;
-        const str = (v: unknown): string | null =>
-          typeof v === "string" && v.trim() ? v.trim() : null;
-        const planetish = (v: unknown): string | null => {
-          if (v == null) return null;
-          if (typeof v === "string" && v.trim()) return v.trim();
-          if (typeof v === "object" && v !== null && "planet" in v) {
-            const p = (v as { planet?: unknown }).planet;
-            return str(p);
-          }
-          return null;
-        };
-        const userAtmakaraka =
-          planetish(data?.jaimini?.AK) ||
-          str(typeof data?.jaimini?.AK === "string" ? data.jaimini.AK : undefined) ||
-          str(data?.jaimini?.AK?.planet) ||
-          str(data?.avkahadaChakra?.Atmakaraka) ||
-          str(data?.avkahadaChakra?.atmakaraka) ||
-          str(data?.avkahadaChakra?.AK) ||
-          planetish(data?.AK) ||
-          str(typeof data?.AK === "string" ? data.AK : undefined) ||
-          str(data?.AK?.planet) ||
-          planetish(data?.atmakaraka) ||
-          str(data?.atmakaraka?.planet) ||
-          null;
-        const vd0 = data?.dashas?.VD?.[0];
-        const vimSys = Array.isArray(data?.dashas)
-          ? (data.dashas as unknown[]).find((x: unknown) =>
-              String((x as { systemName?: string })?.systemName || "")
-                .toLowerCase()
-                .includes("vimshottari"),
-            )
-          : undefined;
-        const vimP0 =
-          vimSys && typeof vimSys === "object" && vimSys !== null && "periods" in vimSys
-            ? (vimSys as { periods?: { name?: string }[] }).periods?.[0]
-            : undefined;
-        const vimName = str(vimP0?.name);
-        const mdFromVd = str(vd0?.mdLord) || str(vd0?.lord) || str(vd0?.md_lord);
-        const adFromVd = str(vd0?.adLord) || str(vd0?.ad_lord);
-        const userDashaType =
-          mdFromVd ||
-          (vimName ? vimName.split(/\s*-\s*/)[0]?.trim() || null : null) ||
-          null;
-        const dashaFromVd =
-          mdFromVd && adFromVd
-            ? `${mdFromVd}-${adFromVd}`
-            : mdFromVd || null;
-        const dashaFromVim =
-          vimName?.replace(/\s*-\s*/g, "-").replace(/\s+/g, "") || null;
-        const chartCtx = {
-          userMoonSign:
-            str(data?.avakahada?.Rasi) ||
-            str(data?.avkahadaChakra?.Rasi) ||
-            str(data?.avkahadaChakra?.Moon_Rasi) ||
-            null,
-          userLagna:
-            str(data?.avakahada?.Lagna) ||
-            str(data?.avkahadaChakra?.Lagna) ||
-            str(data?.avkahadaChakra?.Lagna_Sign) ||
-            null,
-          userAtmakaraka,
-          userSadeSati: Boolean(data?.sadeSati ?? data?.SadeSati ?? false),
-          userDashaType,
-          ageGroup: (() => {
-            const dobStr = dob || "";
-            const d = new Date(dobStr);
-            const age = new Date().getFullYear() - d.getFullYear();
-            if (age <= 27) return "GEN_Z";
-            if (age <= 42) return "MILLENNIAL";
-            if (age <= 55) return "GEN_X";
-            return "SENIOR";
-          })(),
-          dashaAtTime: dashaFromVd || dashaFromVim || null,
-        };
-        localStorage.setItem(
-          "aatmabodha_chart_context",
-          JSON.stringify(chartCtx),
-        );
-      } catch {
-        /* ignore */
-      }
       try {
         localStorage.setItem('vedicAstroData', JSON.stringify(finalData));
       } catch (storageErr) {
         console.warn("Chart data too large for local storage.", storageErr);
       }
       const db = await initDatabase(finalData);
+      // Save chart analytics context (db now available)
+      try {
+        const akQ = db.exec(
+          `SELECT planet_name FROM planets 
+           WHERE D1_Rashi_jamini = 'Atmakaraka' 
+           LIMIT 1`
+        );
+        const ak = akQ?.[0]?.values?.[0]?.[0] || null;
+
+        const dashaQ = db.exec(
+          `SELECT period_name FROM dashas 
+           WHERE system = 'Vimshottari'
+           AND substr(end_date,7,4)||'-'||
+               substr(end_date,4,2)||'-'||
+               substr(end_date,1,2) > date('now')
+           ORDER BY substr(end_date,7,4)||'-'||
+                    substr(end_date,4,2)||'-'||
+                    substr(end_date,1,2) ASC
+           LIMIT 1`
+        );
+        const period = dashaQ?.[0]?.values?.[0]?.[0] || '';
+        const dashaParts = period.split(' - ');
+        const md = dashaParts[0]?.trim() || null;
+        const ad = dashaParts[1]?.trim() || null;
+
+        const avkQ = db.exec(
+          `SELECT key, value FROM avkahada_chakra`
+        );
+        let moonSign = null, lagna = null;
+        avkQ?.[0]?.values?.forEach((row: any[]) => {
+          const k = String(row[0] || '').toLowerCase();
+          if (k.includes('rasi') || k === 'sign') moonSign = row[1];
+          if (k.includes('lagna') || k.includes('ascendant')) lagna = row[1];
+        });
+
+        const authRaw = localStorage.getItem('auth_user');
+        const authId = authRaw
+          ? (JSON.parse(authRaw) as {id?:string})?.id || 'guest'
+          : 'guest';
+
+        const finalCtx = {
+          userMoonSign: moonSign,
+          userLagna: lagna,
+          userAtmakaraka: ak,
+          userSadeSati: (finalData as any)?.sadeSati || false,
+          userDashaType: md,
+          ageGroup: (() => {
+            const d = new Date(dob || '');
+            const age = new Date().getFullYear() - d.getFullYear();
+            if (age <= 27) return 'GEN_Z';
+            if (age <= 42) return 'MILLENNIAL';
+            if (age <= 55) return 'GEN_X';
+            return 'SENIOR';
+          })(),
+          dashaAtTime: md && ad ? `${md}-${ad}` : md,
+        };
+
+        localStorage.setItem(
+          `aatmabodha_chart_context_${authId}`,
+          JSON.stringify(finalCtx)
+        );
+      } catch { /* ignore */ }
       setDbInstance(db);
       setAnalyzing(false);
       setShowCalculationModal(false);
