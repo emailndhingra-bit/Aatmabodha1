@@ -665,7 +665,7 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
 
             const out = await callGeminiChat(
                 this._systemInstruction,
-                this._history,
+                this._history.slice(-12),
                 fullPrompt,
                 userQuestion,
                 this._natalFingerprint,
