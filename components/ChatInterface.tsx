@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, Sparkles, User, Bot, Loader2, BrainCircuit, Copy, Check, X, Globe, ClipboardCopy, Image as ImageIcon, Eye, Network, Heart, Download, Wand2, Compass, ArrowRight, GitBranch, Lightbulb, Clock, TrendingUp, AlertOctagon, Fingerprint, Users, FileDown, Square, CheckSquare, Crown, Paperclip, FileText, Mic, MicOff, AlertTriangle, Share2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { generateCosmicImage, generateCompactOneLiner, getExtraContext } from '../services/geminiService';
+import { generateCosmicImage, generateCompactOneLiner, getExtraContext, getVedicChatHistoryStorageKey } from '../services/geminiService';
 import {
   getAstroLevelOracleHint,
   mergeOracleUserContext,
@@ -31,6 +31,8 @@ interface Props {
   onPromptHandled?: () => void;
   cultureMode?: 'EN' | 'JP' | 'HI';
   isJapanese?: boolean;
+  /** Incremented when a new chart is generated so the transcript resets to a fresh greeting. */
+  chartRefreshEpoch?: number;
 }
 
 interface Message {
@@ -307,7 +309,22 @@ const GLOBAL_LANGUAGES = [
   { code: 'Turkish', label: 'Türkçe', desc: 'Kader ve Yıldızlar' }
 ];
 
-const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageSelect, userPhoto, userAge, userGotra, userMood, userName, userGender, triggerPrompt, onPromptHandled, cultureMode = 'EN' }) => {
+const ChatInterface: React.FC<Props> = ({
+  chatSession,
+  db,
+  language,
+  onLanguageSelect,
+  userPhoto,
+  userAge,
+  userGotra,
+  userMood,
+  userName,
+  userGender,
+  triggerPrompt,
+  onPromptHandled,
+  cultureMode = 'EN',
+  chartRefreshEpoch = 0,
+}) => {
   const [setupWizardComplete, setSetupWizardComplete] = useState(() => readOracleUserContext() != null);
   const [setupPreferredLang, setSetupPreferredLang] = useState<string>(() => readOracleUserContextForm().preferredLanguage || 'Hinglish');
   const [setupPresentCity, setSetupPresentCity] = useState(() => readOracleUserContextForm().presentCity || '');
@@ -382,9 +399,14 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
         initialText = "**नमस्कार।** मैं आत्मबोध (Aatmabodha) हूँ।\n\nमैं आपकी कुंडली को स्पष्ट रूप से देख रहा हूँ। मैं अनुमान नहीं लगाता, गणना करता हूँ। ग्रहों ने आपके लिए एक विशिष्ट जाल बुना है, और मैं उसे सुलझाने के लिए यहाँ हूँ।\n\nनिडर होकर पूछें। चाहे वह आपका **पिछले जन्म** हो, **कर्म ऋण** हो, या आपका **स्वर्ण काल (Golden Period)**—मैं आपको सत्य बताऊंगा।\n\n*आज सितारे आपसे क्या पूछना चाहते हैं?*";
     }
 
+    if (chartRefreshEpoch >= 1) {
+      setMessages([{ role: 'model', text: initialText }]);
+      return;
+    }
+
     // Restore saved chat history if available, otherwise show greeting
     try {
-      const saved = localStorage.getItem('vedicChatHistory');
+      const saved = localStorage.getItem(getVedicChatHistoryStorageKey()) || localStorage.getItem('vedicChatHistory');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 1) {
@@ -396,14 +418,14 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
       console.warn('Could not restore chat history', e);
     }
     setMessages([{ role: 'model', text: initialText }]);
-  }, [cultureMode, setupWizardComplete]);
+  }, [cultureMode, setupWizardComplete, chartRefreshEpoch]);
 
   // Persist messages to localStorage whenever they change (cap at 50)
   useEffect(() => {
     if (messages.length > 1) {
       try {
         const toSave = messages.slice(-50);
-        localStorage.setItem('vedicChatHistory', JSON.stringify(toSave));
+        localStorage.setItem(getVedicChatHistoryStorageKey(), JSON.stringify(toSave));
       } catch (e) {
         console.warn('Could not save chat history', e);
       }
@@ -662,7 +684,12 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
   };
 
   const clearChatHistory = () => {
-    localStorage.removeItem('vedicChatHistory');
+    try {
+      localStorage.removeItem(getVedicChatHistoryStorageKey());
+      localStorage.removeItem('vedicChatHistory');
+    } catch {
+      /* ignore */
+    }
     setSessionTokens(0);
     setTurnCount(0);
     setLastInjectedTopic('');
@@ -687,6 +714,7 @@ const ChatInterface: React.FC<Props> = ({ chatSession, db, language, onLanguageS
   const handleResetOracleUserContext = () => {
     try {
       localStorage.removeItem(USER_CONTEXT_KEY);
+      localStorage.removeItem(getVedicChatHistoryStorageKey());
       localStorage.removeItem('vedicChatHistory');
     } catch (e) {
       console.warn('Could not reset user context', e);

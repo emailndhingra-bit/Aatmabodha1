@@ -3,7 +3,14 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Upload, Download, Loader2, Sparkles, Moon, Table as TableIcon, LayoutGrid, Star, Database, Eye, MessageSquare, BarChart3, Diamond, RefreshCw, Scroll, Camera, UserCircle, Compass, Clock, CheckCircle, AlertTriangle, Play, Hand, Calendar, Book, History, X, Globe, Languages, Mic, ArrowRight, HelpCircle, Crown, Shield } from 'lucide-react';
 import { processAstrologyJson, identifyMissingData, enrichData, calculateAccurateTransits, getSignNum, getSignName, PLANET_LORDS } from './services/jsonMapper';
 import { initDatabase } from './services/db';
-import { createChatSession, saveSessionMemory, MEMORY_KEY_PREFIX } from './services/geminiService';
+import {
+  createChatSession,
+  saveSessionMemory,
+  MEMORY_KEY_PREFIX,
+  clearActiveOracleNatalFingerprint,
+  getMemoryStorageKey,
+  getVedicChatHistoryStorageKey,
+} from './services/geminiService';
 import { processFileContent, processZipFile } from './services/fileProcessor';
 import { AnalysisResult, RawInput } from './types';
 import { saveProfile, getMyProfiles, deleteProfile } from './services/profileService';
@@ -218,6 +225,7 @@ const App: React.FC = () => {
   /** Bumped after /api/auth/me so admin nav re-reads `auth_user` from localStorage. */
   const [authUserTick, setAuthUserTick] = useState(0);
   const [chatSession, setChatSession] = useState<any>(null);
+  const [chartRefreshEpoch, setChartRefreshEpoch] = useState(0);
   const [language, setLanguage] = useState<string | null>(null);
   
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -392,6 +400,36 @@ const App: React.FC = () => {
     }
   };
 
+  const handleStartFresh = () => {
+    try {
+      (window as unknown as { __geminiService?: { clearHistory?: () => void } }).__geminiService?.clearHistory?.();
+    } catch {
+      /* ignore */
+    }
+    const uid = getOracleMemoryUserId();
+    try {
+      localStorage.removeItem(getMemoryStorageKey(uid));
+      localStorage.removeItem(MEMORY_KEY_PREFIX + uid);
+    } catch {
+      /* ignore */
+    }
+    clearActiveOracleNatalFingerprint();
+    try {
+      localStorage.removeItem(`aatmabodha_chart_context_${uid}`);
+    } catch {
+      /* ignore */
+    }
+    localStorage.removeItem('vedicAstroData');
+    localStorage.removeItem('activeOracleDB');
+    setChatSession(null);
+    setDbInstance(null);
+    setData(null);
+    setChartRefreshEpoch((n) => n + 1);
+    setViewMode('chat');
+    setAnalyzing(false);
+    console.log('[UI] Fresh start — context cleared, birth form');
+  };
+
   const handleReset = () => {
     // Clear all related local storage
     localStorage.removeItem('vedicAstroData');
@@ -406,6 +444,13 @@ const App: React.FC = () => {
     localStorage.removeItem('vedicLifeBook');
     localStorage.removeItem('vedicBtrPerformed');
     localStorage.removeItem('vedicChatHistory');
+    try {
+      Object.keys(localStorage).forEach((k) => {
+        if (k.startsWith('vedicChatHistory_')) localStorage.removeItem(k);
+      });
+    } catch {
+      /* ignore */
+    }
     localStorage.removeItem('vedicQueryAnalytics');
     localStorage.removeItem('userContext');
     // Keep consent — user doesn't need to re-consent after reset
@@ -509,6 +554,16 @@ const App: React.FC = () => {
         console.warn("Chart data too large for local storage.", storageErr);
       }
       const db = await initDatabase(finalData);
+      const clearPreviousSession = () => {
+        try {
+          (window as unknown as { __geminiService?: { clearHistory?: () => void } }).__geminiService?.clearHistory?.();
+        } catch {
+          /* ignore */
+        }
+        setChartRefreshEpoch((n) => n + 1);
+        console.log('[Chart] New chart generated — chat history cleared');
+      };
+      clearPreviousSession();
       // Save chart analytics context (db now available)
       try {
         const akQ = db.exec(
@@ -678,8 +733,13 @@ const App: React.FC = () => {
         timezone: localStorage.getItem('vedicUserTimezone') || '',
         // Last 50 chat messages (no full chart data injections — just conversations)
         chatHistory: (() => {
-          try { return JSON.parse(localStorage.getItem('vedicChatHistory') || '[]'); }
-          catch { return []; }
+          try {
+            const scoped = localStorage.getItem(getVedicChatHistoryStorageKey());
+            if (scoped) return JSON.parse(scoped);
+            return JSON.parse(localStorage.getItem('vedicChatHistory') || '[]');
+          } catch {
+            return [];
+          }
         })(),
         preferences: {
           language: localStorage.getItem('vedicLanguage') || null,
@@ -734,7 +794,10 @@ const App: React.FC = () => {
       if (vault.userLocation) localStorage.setItem('vedicUserLocation', vault.userLocation);
       if (vault.timezoneName) { localStorage.setItem('vedicUserTimezoneName', vault.timezoneName); setTimezoneName(vault.timezoneName); }
       if (vault.timezone) { localStorage.setItem('vedicUserTimezone', vault.timezone); setTimezone(parseFloat(vault.timezone)); }
-      if (vault.chatHistory?.length) localStorage.setItem('vedicChatHistory', JSON.stringify(vault.chatHistory));
+      if (vault.chatHistory?.length) {
+        localStorage.setItem(getVedicChatHistoryStorageKey(), JSON.stringify(vault.chatHistory));
+        localStorage.setItem('vedicChatHistory', JSON.stringify(vault.chatHistory));
+      }
       if (vault.oracleUserContext && typeof vault.oracleUserContext === 'object') {
         try {
           mergeOracleUserContext(vault.oracleUserContext as Record<string, unknown>);
@@ -1555,6 +1618,15 @@ const App: React.FC = () => {
                         <LayoutGrid className="w-4 h-4" />
                         <span className="hidden md:inline">{cultureMode === 'JP' ? "チャート" : cultureMode === 'HI' ? "चार्ट" : "Charts"}</span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={handleStartFresh}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold tracking-wide text-rose-200 bg-rose-950/20 border border-rose-500/30 hover:border-rose-400/50 hover:bg-rose-900/30 transition-all shrink-0"
+                      title="Clear chat memory and chart so you can enter a new birth chart"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      <span className="hidden sm:inline">New chart</span>
+                    </button>
                     <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider text-amber-500/80 hover:text-amber-300 hover:bg-amber-950/30 border border-amber-900/30 hover:border-amber-500/50 transition-all shrink-0" title="Start fresh and restart onboarding">
                         <History className="w-4 h-4" />
                         <span className="hidden lg:inline">{cultureMode === 'JP' ? "リセット" : cultureMode === 'HI' ? "रीसेट" : "Restart"}</span>
@@ -2035,6 +2107,7 @@ const App: React.FC = () => {
                     triggerPrompt={triggerPrompt}
                     onPromptHandled={() => setTriggerPrompt(null)}
                     cultureMode={cultureMode}
+                    chartRefreshEpoch={chartRefreshEpoch}
                  />
             </div>
 

@@ -13,8 +13,78 @@ const BACKEND_URL =
     "https://aatmabodha1-backend.onrender.com";
 const GEMINI_MODEL = "gemini-3.1-pro-preview";
 
-// Session memory keys
+// Session memory keys — scoped per chart fingerprint so a new nativity never reads the last chart's memory
 export const MEMORY_KEY_PREFIX = "aatmabodha_memory_";
+const VEDIC_ORACLE_FP_KEY = "vedicOracleNatalFingerprint";
+
+let activeGeminiChatSession: { _history?: { role: string; text: string }[] } | null = null;
+
+export function setActiveOracleNatalFingerprint(fp: string): void {
+    try {
+        if (typeof localStorage === "undefined") return;
+        const norm = (fp || "").replace(/\s+/g, "").slice(0, 32);
+        localStorage.setItem(VEDIC_ORACLE_FP_KEY, norm || "default");
+    } catch {
+        /* ignore */
+    }
+}
+
+export function getActiveOracleNatalFingerprint(): string {
+    try {
+        if (typeof localStorage === "undefined") return "";
+        return (localStorage.getItem(VEDIC_ORACLE_FP_KEY) || "").replace(/\s+/g, "");
+    } catch {
+        return "";
+    }
+}
+
+export function clearActiveOracleNatalFingerprint(): void {
+    try {
+        if (typeof localStorage === "undefined") return;
+        localStorage.removeItem(VEDIC_ORACLE_FP_KEY);
+    } catch {
+        /* ignore */
+    }
+}
+
+/** localStorage key for USER_MEMORY merge (userId + first 16 hex of natal fingerprint). */
+export function getMemoryStorageKey(userId: string): string {
+    const fp = getActiveOracleNatalFingerprint().slice(0, 16) || "default";
+    return `${MEMORY_KEY_PREFIX}${userId}_${fp}`;
+}
+
+/** Persisted chat transcript key per chart (parallel to Gemini _history). */
+export function getVedicChatHistoryStorageKey(): string {
+    const fp = getActiveOracleNatalFingerprint().slice(0, 16) || "default";
+    return `vedicChatHistory_${fp}`;
+}
+
+function clearOracleChatRamAndDisk(): void {
+    const fp = getActiveOracleNatalFingerprint().slice(0, 16) || "default";
+    try {
+        localStorage.removeItem(`vedicChatHistory_${fp}`);
+        localStorage.removeItem("vedicChatHistory");
+    } catch {
+        /* ignore */
+    }
+    if (activeGeminiChatSession && Array.isArray(activeGeminiChatSession._history)) {
+        activeGeminiChatSession._history = [];
+    }
+    console.log("[GeminiService] History cleared for new chart");
+}
+
+function attachGeminiWindowApi(): void {
+    if (typeof window === "undefined") return;
+    (window as unknown as { __geminiService?: { clearHistory: () => void } }).__geminiService = {
+        clearHistory: (): void => {
+            clearOracleChatRamAndDisk();
+        },
+    };
+}
+
+if (typeof window !== "undefined") {
+    attachGeminiWindowApi();
+}
 
 function resolveMemoryUserIdFromStorage(): string {
     try {
@@ -33,15 +103,25 @@ function resolveMemoryUserIdFromStorage(): string {
 export function loadSessionMemory(userId?: string): string {
     try {
         if (typeof localStorage === "undefined") return "";
-        const key = userId ? `${MEMORY_KEY_PREFIX}${userId}` : MEMORY_KEY_PREFIX + "guest";
-        const raw = localStorage.getItem(key);
+        const uid = userId || resolveMemoryUserIdFromStorage();
+        const key = getMemoryStorageKey(uid);
+        let raw = localStorage.getItem(key);
+        if (!raw) {
+            const legacyKey = `${MEMORY_KEY_PREFIX}${uid}`;
+            raw = localStorage.getItem(legacyKey);
+        }
         if (!raw) return "";
         const memory = JSON.parse(raw);
         // Only use memory from last 30 days
         const lastSession = new Date(memory.lastSession);
         const daysSince = (Date.now() - lastSession.getTime()) / (1000 * 60 * 60 * 24);
         if (daysSince > 30) {
-            localStorage.removeItem(key);
+            try {
+                localStorage.removeItem(key);
+                localStorage.removeItem(`${MEMORY_KEY_PREFIX}${uid}`);
+            } catch {
+                /* ignore */
+            }
             return "";
         }
         return `USER_MEMORY: ${JSON.stringify(memory)}`;
@@ -71,7 +151,8 @@ export function saveSessionMemory(
 ): void {
     const userId = typeof userIdOrUpdates === "string" ? userIdOrUpdates : undefined;
     const updates = typeof userIdOrUpdates === "string" ? updatesArg || {} : userIdOrUpdates;
-    const key = userId ? `${MEMORY_KEY_PREFIX}${userId}` : MEMORY_KEY_PREFIX + "guest";
+    const uid = userId || resolveMemoryUserIdFromStorage();
+    const key = getMemoryStorageKey(uid);
     try {
         if (typeof localStorage === "undefined") return;
         const existing = localStorage.getItem(key);
@@ -518,37 +599,45 @@ export const getSystemInstruction = (db: any, language: string, cultureMode: 'EN
 export const createChatSession = async (db: any, language: string, cultureMode: 'EN' | 'JP' | 'HI' = 'EN'): Promise<any> => {
     const context = generateCompactOneLiner(db);
     const natalFingerprint = await computeNatalContextFingerprint(db);
+    setActiveOracleNatalFingerprint(natalFingerprint);
     const { systemInstruction, initialGreeting } = getSystemInstruction(db, language, cultureMode);
 
-    // Load warm history from localStorage (same logic as before)
+    // Load warm history from localStorage (scoped per chart fingerprint)
     const chatHistory: { role: 'user' | 'model'; text: string }[] = [];
     try {
-        const savedRaw = typeof window !== 'undefined' ? localStorage.getItem('vedicChatHistory') : null;
+        const scopedKey = getVedicChatHistoryStorageKey();
+        const savedRaw =
+            typeof window !== "undefined"
+                ? localStorage.getItem(scopedKey) || localStorage.getItem("vedicChatHistory")
+                : null;
         if (savedRaw) {
             const saved: { role: string; text: string }[] = JSON.parse(savedRaw);
             const recent = saved
-                .filter(m => m.role === 'user' || (m.role === 'model' && m.text !== initialGreeting))
+                .filter((m) => m.role === "user" || (m.role === "model" && m.text !== initialGreeting))
                 .slice(-10);
-            recent.forEach(m => {
-                const cleanText = m.text.replace(/\n\n---\n\*Model:.*$/s, '').trim();
+            recent.forEach((m) => {
+                const cleanText = m.text.replace(/\n\n---\n\*Model:.*$/s, "").trim();
                 if (cleanText.length > 10) {
                     chatHistory.push({
-                        role: m.role as 'user' | 'model',
+                        role: m.role as "user" | "model",
                         text: cleanText.slice(0, 800),
                     });
                 }
             });
         }
     } catch (e) {
-        console.warn('Could not load warm history', e);
+        console.warn("Could not load warm history", e);
     }
 
-    // Return a mock chat object matching the original SDK interface
-    return {
+    const sessionObj = {
         _history: chatHistory,
         _systemInstruction: systemInstruction,
         _context: context,
         _natalFingerprint: natalFingerprint,
+
+        clearHistory() {
+            clearOracleChatRamAndDisk();
+        },
 
         sendMessage: async function (userMessage: string, userQuestion?: string) {
             const userCtx = localStorage.getItem('userContext');
@@ -595,6 +684,10 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
             };
         },
     };
+
+    activeGeminiChatSession = sessionObj;
+    attachGeminiWindowApi();
+    return sessionObj;
 };
 
 // ─────────────────────────────────────────────────────────────
