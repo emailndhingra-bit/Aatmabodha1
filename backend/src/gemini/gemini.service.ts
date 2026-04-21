@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { QuestionsService } from '../questions/questions.service';
 
 /** Gemini REST generateContent (chat, reports, images) — allow long model latency */
-const GEMINI_GENERATE_TIMEOUT_MS = 170000;
+const GEMINI_GENERATE_TIMEOUT_MS = 160000;
 
 function isAbortError(err: unknown): boolean {
   if (err instanceof Error && err.name === 'AbortError') return true;

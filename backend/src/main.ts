@@ -31,6 +31,10 @@ async function bootstrap() {
     }),
   );
 
+  const server = app.getHttpServer();
+  server.keepAliveTimeout = 170000;
+  server.headersTimeout = 175000;
+
   await app.listen(process.env.PORT ? Number(process.env.PORT) : 4000, '0.0.0.0');
 }
 
