@@ -599,13 +599,13 @@ export const getSystemInstruction = (db: any, language: string, cultureMode: 'EN
     ## DASHA DATA PARSING (How to read the chart data)
     Format: \`Planet A - Planet B - Planet C | Ends: DD/MM/YYYY\`
     First Name (before 1st hyphen) = MAHADASHA (MD). Second Name = ANTARDASHA (AD). Third Name = PRATYANTARDASHA (PD).
-    To find CURRENT dasha: scan [VIMSHOTTARI DASHA TIMELINE], find first row where Ends date > the session "Today" date in [CHART_DATA] (line \`Today:[YYYY-MM-DD]\`). That row is the active period.
+    To find CURRENT dasha: scan [VIMSHOTTARI DASHA TIMELINE], find first row where Ends date > the session "Today" date in [CHART_DATA] below (line \`Today:[YYYY-MM-DD]\`). That row is the active period.
     MD START DATE = end date of the PREVIOUS Mahadasha's last Antardasha. Never use first PD end date as MD start.
     Never mix up MD and AD. "Rahu - Jupiter" = Rahu is MD, Jupiter is AD.
     
     ## ANTI-HALLUCINATION GUARDS
-    - Calendar "today": use ONLY the \`Today:[YYYY-MM-DD]\` line inside [CHART_DATA] in the user's message. Never use training-data dates for "today."
-    - Transit positions: use ONLY the \`TRANSITS:\` line inside [CHART_DATA] in the user's message. Never calculate transits from memory.
+    - Calendar "today": use ONLY the \`Today:[YYYY-MM-DD]\` line inside [CHART_DATA] below. Never use training-data dates for "today."
+    - Transit positions: use ONLY the \`TRANSITS:\` line inside [CHART_DATA] below. Never calculate transits from memory.
     - Calibration: In 2026, Rahu is in Aquarius, Ketu in Leo. If your output differs, recalculate.
     - Never guess Lagna without precise birth time + coordinates.
     
@@ -694,7 +694,7 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
 
             const out = await callGeminiChat(
                 this._systemInstruction,
-                this._history.slice(-12),
+                this._history.slice(-6),
                 fullPrompt,
                 userQuestion,
                 this._natalFingerprint,
