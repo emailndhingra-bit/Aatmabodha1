@@ -99,6 +99,33 @@ function resolveMemoryUserIdFromStorage(): string {
     }
 }
 
+/** Mirrors backend `UsersService.getEffectiveQuota` for Oracle context (auth_user from /api/auth/me). */
+function getEffectiveQuotaFromAuthUser(u: { customQuota?: number | null } | null): number {
+    if (!u) return 0;
+    if (u.customQuota != null) return u.customQuota;
+    return 60;
+}
+
+/**
+ * V5.9: remaining question count for [QUOTA_REMAINING].
+ * Uses `questions_used` / `custom_quota` on the User row exposed via auth_user (no extra API).
+ * `custom_quota === 0` means unlimited → large integer sentinel for the model slot.
+ */
+function getUserQuotaRemainingFromAuth(): number {
+    try {
+        if (typeof localStorage === "undefined") return 0;
+        const authRaw = localStorage.getItem("auth_user");
+        if (!authRaw) return 0;
+        const u = JSON.parse(authRaw) as { questionsUsed?: number; customQuota?: number | null };
+        const cap = getEffectiveQuotaFromAuthUser(u);
+        if (cap === 0) return 999999;
+        const used = typeof u.questionsUsed === "number" ? u.questionsUsed : 0;
+        return Math.max(0, cap - used);
+    } catch {
+        return 0;
+    }
+}
+
 // Load memory from localStorage
 export function loadSessionMemory(userId?: string): string {
     try {
@@ -659,7 +686,9 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
             if (focus) lines.push(`USER_FOCUS_AREAS: ${focus}`);
             lines.push(`USER_ASTRO_LEVEL: ${astro}`);
             const sessionMemory = loadSessionMemory(resolveMemoryUserIdFromStorage());
-            const contextPrefix = `${lines.join("\n")}\n${sessionMemory ? sessionMemory + "\n" : ""}\n`;
+            const quotaRemaining = getUserQuotaRemainingFromAuth();
+            const quotaBlock = `\n[QUOTA_REMAINING] = ${quotaRemaining}\n`;
+            const contextPrefix = `${lines.join("\n")}\n${sessionMemory ? sessionMemory + "\n" : ""}${quotaBlock}\n`;
 
             const fullPrompt = contextPrefix + userMessage;
 
