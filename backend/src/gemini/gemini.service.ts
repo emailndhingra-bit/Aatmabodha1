@@ -369,6 +369,7 @@ export class GeminiService {
     } else if (effectiveSi) {
       payload.systemInstruction = { parts: [{ text: effectiveSi }] };
     }
+    payload.generationConfig = { maxOutputTokens: 600 };
 
     const genController = new AbortController();
     const genTimeout = setTimeout(() => genController.abort(), GEMINI_GENERATE_TIMEOUT_MS);
@@ -399,6 +400,12 @@ export class GeminiService {
         finishReason: data?.candidates?.[0]?.finishReason,
         httpOk: res.ok,
       });
+      if (data?.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+        console.warn('[OracleDiag] Response hit maxOutputTokens cap', {
+          outputLength: rawOut?.length ?? 0,
+          userQuestion: diagUserQ,
+        });
+      }
       let text = rawOut;
       text = this.truncatePreservingSugg(text, String(message || ''));
       const MAX_OUTPUT = 3200; // ~400 words
