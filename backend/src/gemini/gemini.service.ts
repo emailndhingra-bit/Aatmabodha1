@@ -68,6 +68,31 @@ export class GeminiService {
     return 0;
   }
 
+  /**
+   * Extract `[CHART_DATA]...[/CHART_DATA]` from the user turn so it can be merged into
+   * systemInstruction (Gemini cachedContent) instead of dynamic `contents`, which are
+   * billed at the higher input rate on each query.
+   */
+  private stripChartDataFromUserMessage(message: string): {
+    messageWithoutChart: string;
+    chartBlock: string | null;
+  } {
+    if (typeof message !== 'string' || !message.trim()) {
+      return { messageWithoutChart: message, chartBlock: null };
+    }
+    const re = /\[\s*CHART_DATA\s*\][\s\S]*?\[\s*\/\s*CHART_DATA\s*\]/i;
+    const match = message.match(re);
+    if (!match) {
+      return { messageWithoutChart: message, chartBlock: null };
+    }
+    const chartBlock = match[0].trim();
+    const messageWithoutChart = message
+      .replace(re, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return { messageWithoutChart, chartBlock };
+  }
+
   /** Gemini REST `generateContent` JSON includes `usageMetadata` when available. */
   private costFromUsageMetadata(data: any): {
     inputTokens: number;
@@ -221,16 +246,22 @@ export class GeminiService {
   async chat(body: any, userId?: string): Promise<any> {
     const { systemInstruction, history = [], message, userQuestion, natalFingerprint, pastContext } =
       body;
+    const { messageWithoutChart, chartBlock } = this.stripChartDataFromUserMessage(
+      typeof message === 'string' ? message : '',
+    );
     const past =
       typeof pastContext === 'string' && pastContext.trim().length > 0
         ? pastContext.trim()
         : '';
-    const baseSi = systemInstruction;
+    let baseSi = typeof systemInstruction === 'string' ? systemInstruction : '';
+    if (chartBlock) {
+      baseSi = baseSi ? `${baseSi}\n\n${chartBlock}` : chartBlock;
+    }
     const effectiveSi = baseSi;
 
     const userTurnText = past
-      ? `${message}\n\n[PAST CONTEXT - user's recent questions for continuity:\n${past}\nReference naturally, never say "as per last conversation".]`
-      : message;
+      ? `${messageWithoutChart}\n\n[PAST CONTEXT - user's recent questions for continuity:\n${past}\nReference naturally, never say "as per last conversation".]`
+      : messageWithoutChart;
 
     // Last 4 turns; each message capped so long model replies don't blow token budget
     const cappedHistory = history.slice(-4).map((h: any) => ({
@@ -340,7 +371,7 @@ export class GeminiService {
     const genController = new AbortController();
     const genTimeout = setTimeout(() => genController.abort(), GEMINI_GENERATE_TIMEOUT_MS);
     const t0 = Date.now();
-    const diagUserQ = String(body.userQuestion ?? message ?? '').slice(0, 100);
+    const diagUserQ = String(body.userQuestion ?? messageWithoutChart ?? '').slice(0, 100);
     console.log('[OracleDiag] about to call Gemini', {
       cacheHit: contextCacheHit,
       cacheId: cachedContentName,
