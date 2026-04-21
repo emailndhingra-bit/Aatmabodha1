@@ -284,6 +284,15 @@ export class GeminiService {
 
     const genController = new AbortController();
     const genTimeout = setTimeout(() => genController.abort(), GEMINI_GENERATE_TIMEOUT_MS);
+    const t0 = Date.now();
+    const diagUserQ = String(body.userQuestion ?? message ?? '').slice(0, 100);
+    console.log('[OracleDiag] about to call Gemini', {
+      cacheHit: contextCacheHit,
+      cacheId: cachedContentName,
+      cachedLength: baseSi ? baseSi.length : 0,
+      dynamicLength: JSON.stringify(contents).length,
+      userQuestion: diagUserQ,
+    });
     try {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
@@ -295,7 +304,14 @@ export class GeminiService {
         },
       );
       const data = await res.json();
-      let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const rawOut = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      console.log('[OracleDiag] Gemini returned', {
+        ms: Date.now() - t0,
+        outputLength: typeof rawOut === 'string' ? rawOut.length : 0,
+        finishReason: data?.candidates?.[0]?.finishReason,
+        httpOk: res.ok,
+      });
+      let text = rawOut;
       text = this.truncatePreservingSugg(text, String(message || ''));
       const MAX_OUTPUT = 3200; // ~400 words
       if (text && text.length > MAX_OUTPUT) {
@@ -332,6 +348,14 @@ export class GeminiService {
 
       return { text, cacheHit: contextCacheHit, costUsd, inputTokens, outputTokens };
     } catch (err: unknown) {
+      const e = err as { name?: string; message?: string; code?: string; cause?: unknown };
+      console.error('[OracleDiag] Gemini failed', {
+        ms: Date.now() - t0,
+        name: e?.name,
+        message: e?.message,
+        code: e?.code,
+        cause: e?.cause,
+      });
       if (isAbortError(err)) {
         console.warn('[Gemini chat] generateContent aborted (timeout or client disconnect)');
         return {
