@@ -245,6 +245,60 @@ export class GeminiService {
     return p;
   }
 
+  /**
+   * Compact conversation history into a single focused summary.
+   * Extracts: topics discussed, predictions made, remedies vetoed,
+   * unresolved intrigue hooks. Drops verbose text.
+   * Accepts Gemini-style `model` turns (frontend) or `assistant`.
+   */
+  private buildHistorySummary(
+    history: Array<{ role: 'user' | 'assistant' | 'model' | string; text: string }>,
+  ): string {
+    if (!history || history.length === 0) return '';
+
+    const turns = history.slice(-6);
+    const topics: string[] = [];
+    const predictions: string[] = [];
+    const vetoes: string[] = [];
+    const hooks: string[] = [];
+
+    for (const turn of turns) {
+      if (turn.role !== 'assistant' && turn.role !== 'model') continue;
+      const text = String(turn.text ?? '');
+
+      const refMatches = text.match(/\[([TSHVJRCDMG]\d+)\]/g) ?? [];
+      if (refMatches.length > 0) {
+        topics.push(refMatches.slice(0, 3).join(' '));
+      }
+
+      const predMatches = text.match(/\d{1,3}%[^.]{0,80}/g) ?? [];
+      predictions.push(...predMatches.slice(0, 2));
+
+      if (/bilkul mat pehno|veto|mat karo/i.test(text)) {
+        const veto = text.match(
+          /([A-Z][a-z]+(?:\s+\([^)]+\))?)\s+(?:abhi\s+)?bilkul mat/,
+        );
+        if (veto) vetoes.push(veto[0]);
+      }
+
+      const hookMatch = text.match(/([^.]{20,150}\?)\s*$/);
+      if (hookMatch) hooks.push(hookMatch[1].trim());
+    }
+
+    const parts: string[] = [];
+    if (topics.length > 0) parts.push(`Topics: ${topics.slice(0, 5).join(', ')}`);
+    if (predictions.length > 0)
+      parts.push(`Predictions: ${predictions.slice(0, 3).join('; ')}`);
+    if (vetoes.length > 0) parts.push(`Vetoed: ${vetoes.slice(0, 3).join(', ')}`);
+    if (hooks.length > 0) parts.push(`Open threads: ${hooks[hooks.length - 1]}`);
+
+    if (parts.length === 0) return '';
+    const summary = `[Prior conversation summary]\n${parts.join('\n')}\n[End summary]`;
+    const maxLen = 1500;
+    if (summary.length <= maxLen) return summary;
+    return summary.slice(0, maxLen - 3) + '...';
+  }
+
   async chat(body: any, userId?: string): Promise<any> {
     const { systemInstruction, history = [], message, userQuestion, natalFingerprint, pastContext } =
       body;
@@ -265,13 +319,14 @@ export class GeminiService {
       ? `${messageWithoutChart}\n\n[PAST CONTEXT - user's recent questions for continuity:\n${past}\nReference naturally, never say "as per last conversation".]`
       : messageWithoutChart;
 
-    // Last 4 turns; each message capped so long model replies don't blow token budget
-    const cappedHistory = history.slice(-4).map((h: any) => ({
-      role: h.role,
-      parts: [{ text: String(h.text ?? '').slice(0, 500) }],
-    }));
+    const rawHistory = Array.isArray(history) ? history : [];
+    const historySummary = this.buildHistorySummary(rawHistory);
+    const userMessageWithSummary =
+      historySummary.length > 0
+        ? `${historySummary}\n\n---\n\n${userTurnText}`
+        : userTurnText;
 
-    const contents = [...cappedHistory, { role: 'user', parts: [{ text: userTurnText }] }];
+    const contents = [{ role: 'user', parts: [{ text: userMessageWithSummary }] }];
 
     let cachedContentName: string | null = null;
     /** True only when reusing an existing Gemini cachedContent handle (not first create). */
@@ -380,6 +435,8 @@ export class GeminiService {
       cachedLength: baseSi ? baseSi.length : 0,
       dynamicLength: JSON.stringify(contents).length,
       userQuestion: diagUserQ,
+      historySummaryLength: historySummary?.length ?? 0,
+      historyTurnCount: rawHistory?.length ?? 0,
     });
     try {
       const res = await fetch(
