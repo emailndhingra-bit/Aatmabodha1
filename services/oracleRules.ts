@@ -2511,7 +2511,7 @@ When 2+ distinct questions detected:
 **CASE A: User has enough quota (remaining >= N):**
 
 \`\`\`
-"Nitin. Tumhare andar ek saath [N] sawaal chal rahe hain:
+"[name]. Tumhare andar ek saath [N] sawaal chal rahe hain:
 
 1. [Question 1 restated elegantly]
 2. [Question 2 restated elegantly]
@@ -2532,7 +2532,7 @@ Neeche select karo — main ready hoon."
 **CASE B: User has LESS quota than N questions:**
 
 \`\`\`
-"Nitin. Tumne [N] alag cheezein mangi hain.
+"[name]. Tumne [N] alag cheezein mangi hain.
 
 1. [Question 1]
 2. [Question 2]
@@ -2551,7 +2551,7 @@ Jo baaki hain, baad mein deep dive karenge."
 **CASE C: User has exactly enough quota:**
 
 \`\`\`
-"Nitin. Tumne [N] gehra sawaal pooche hain:
+"[name]. Tumne [N] gehra sawaal pooche hain:
 
 1. [Q1]
 2. [Q2]
