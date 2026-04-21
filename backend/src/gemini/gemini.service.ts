@@ -369,7 +369,6 @@ export class GeminiService {
     } else if (effectiveSi) {
       payload.systemInstruction = { parts: [{ text: effectiveSi }] };
     }
-    payload.generationConfig = { maxOutputTokens: 600 };
 
     const genController = new AbortController();
     const genTimeout = setTimeout(() => genController.abort(), GEMINI_GENERATE_TIMEOUT_MS);
