@@ -50,6 +50,24 @@ export class GeminiService {
       .digest('hex');
   }
 
+  /** Parse Gemini CachedContent `expireTime` (RFC3339 string or protobuf JSON). */
+  private cachedContentExpireMs(c: {
+    expireTime?: string | { seconds?: string | number; nanos?: number };
+  }): number {
+    const et = c?.expireTime;
+    if (typeof et === 'string' && et) {
+      const ms = new Date(et).getTime();
+      return Number.isFinite(ms) ? ms : 0;
+    }
+    if (et && typeof et === 'object' && et.seconds != null) {
+      const s =
+        typeof et.seconds === 'string' ? parseInt(et.seconds, 10) : Number(et.seconds);
+      const n = typeof et.nanos === 'number' ? et.nanos / 1e6 : 0;
+      return Number.isFinite(s) ? s * 1000 + n : 0;
+    }
+    return 0;
+  }
+
   /** Gemini REST `generateContent` JSON includes `usageMetadata` when available. */
   private costFromUsageMetadata(data: any): {
     inputTokens: number;
@@ -238,39 +256,76 @@ export class GeminiService {
       if (entry && Date.now() < entry.expiresAt) {
         cachedContentName = entry.name;
         contextCacheHit = true;
-        console.log('[ContextCache] Hit:', cachedContentName);
+        console.log('[ContextCache] Hit (memory):', cachedContentName);
       } else {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
+        const listCtl = new AbortController();
+        const listTo = setTimeout(() => listCtl.abort(), 3000);
         try {
-          const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/cachedContents?key=${this.apiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              signal: controller.signal,
-              body: JSON.stringify({
-                model: 'models/gemini-3.1-pro-preview',
-                systemInstruction: { parts: [{ text: baseSi }] },
-                ttl: '3600s',
-                contents: [],
-              }),
-            },
+          const listRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/cachedContents?key=${this.apiKey}&pageSize=50`,
+            { method: 'GET', signal: listCtl.signal },
           );
-          const created = await res.json();
-          if (!res.ok) {
-            throw new Error(created?.error?.message || `HTTP ${res.status}`);
+          const listData = await listRes.json();
+          if (listRes.ok) {
+            const items: any[] = Array.isArray(listData?.cachedContents)
+              ? listData.cachedContents
+              : [];
+            const minExp = Date.now() + 60000;
+            const existing = items.find((c: any) => {
+              if (c?.displayName !== instructionKey || !c?.name) return false;
+              return this.cachedContentExpireMs(c) > minExp;
+            });
+            if (existing) {
+              const expMs = this.cachedContentExpireMs(existing);
+              cachedContentName = existing.name as string;
+              contextCacheHit = true;
+              this.contextCache.set(instructionKey, {
+                name: cachedContentName,
+                expiresAt: expMs > 0 ? expMs : Date.now() + 3500000,
+              });
+              console.log('[ContextCache] Hit (Gemini recovered):', cachedContentName);
+            }
           }
-          const name = created.name as string;
-          this.contextCache.set(instructionKey, { name, expiresAt: Date.now() + 3500000 });
-          cachedContentName = name;
-          console.log('[ContextCache] Created:', name);
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.warn('[ContextCache] Failed:', msg);
-          cachedContentName = null;
+        } catch {
+          /* list is best-effort; fall through to create */
         } finally {
-          clearTimeout(timeout);
+          clearTimeout(listTo);
+        }
+
+        if (!cachedContentName) {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 8000);
+          try {
+            const res = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/cachedContents?key=${this.apiKey}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: controller.signal,
+                body: JSON.stringify({
+                  model: 'models/gemini-3.1-pro-preview',
+                  systemInstruction: { parts: [{ text: baseSi }] },
+                  ttl: '3600s',
+                  contents: [],
+                  displayName: instructionKey,
+                }),
+              },
+            );
+            const created = await res.json();
+            if (!res.ok) {
+              throw new Error(created?.error?.message || `HTTP ${res.status}`);
+            }
+            const name = created.name as string;
+            this.contextCache.set(instructionKey, { name, expiresAt: Date.now() + 3500000 });
+            cachedContentName = name;
+            console.log('[ContextCache] Created:', name);
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn('[ContextCache] Failed:', msg);
+            cachedContentName = null;
+          } finally {
+            clearTimeout(timeout);
+          }
         }
       }
     }
