@@ -15,6 +15,7 @@ import { getOracleShareDashaLine } from '../services/oracleShareUtils';
 import OracleShareModal from './OracleShareModal';
 import { processFileContent, processZipFile } from '../services/fileProcessor';
 import { jsPDF } from "jspdf";
+import { QuestionSelector } from './QuestionSelector';
 
 interface Props {
   chatSession: any | null;
@@ -368,6 +369,7 @@ const ChatInterface: React.FC<Props> = ({
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
   const [qaPairs, setQaPairs] = useState<QAPair[]>([]);
   const [selectedQaIds, setSelectedQaIds] = useState<number[]>([]);
+  const [pendingQuestions, setPendingQuestions] = useState<{ id: number; text: string }[] | null>(null);
 
   // ── Memory & Token Management State ──────────────────
   const [sessionTokens, setSessionTokens] = useState(0);
@@ -1006,6 +1008,10 @@ const ChatInterface: React.FC<Props> = ({
       }
       
       setMessages(prev => [...prev, { role: 'model', text: responseText }]);
+      const parsedQuestions = parseMultiQuestionResponse(responseText);
+      if (parsedQuestions) {
+        setPendingQuestions(parsedQuestions);
+      }
       setLoading(false); 
       
       if (visualizeMatch && shouldTriggerImage) {
@@ -1339,6 +1345,26 @@ const ChatInterface: React.FC<Props> = ({
       return cultureMode === 'JP' ? "アートマボーダに尋ねる..." : cultureMode === 'HI' ? "आत्मबोध से पूछें..." : `Ask Aatmabodha (${language || 'English'})...`;
   };
 
+  const parseMultiQuestionResponse = (text: string): { id: number; text: string }[] | null => {
+    const triggers = [
+      'Tumhare andar ek saath',
+      'alag cheezein mangi',
+      'gehra sawaal pooche',
+      'Neeche select karo',
+      'Chuno kya abhi',
+      'Chuno jo abhi'
+    ];
+    const hasTrigger = triggers.some(t => text.includes(t));
+    if (!hasTrigger) return null;
+    const questionRegex = /^\s*(\d+)\.\s+(.+?)$/gm;
+    const matches = [...text.matchAll(questionRegex)];
+    if (matches.length < 2) return null;
+    return matches.map((match, idx) => ({
+      id: idx + 1,
+      text: match[2].trim().replace(/\*\*/g, '').replace(/[?]$/, '')
+    }));
+  };
+
   return (
     <div className="flex flex-col h-[80vh] relative overflow-hidden rounded-xl shadow-2xl border border-amber-900/30 bg-[#0B0c15]">
       <style>{`
@@ -1652,7 +1678,7 @@ const ChatInterface: React.FC<Props> = ({
         ))}
 
         {/* LOGICAL EXTENSION TILES (FOLLOW-UPS) */}
-        {setupWizardComplete && !loading && suggestedFollowUps.length > 0 && messages.length > 0 && messages[messages.length - 1].role === 'model' && (
+        {setupWizardComplete && !pendingQuestions && !loading && suggestedFollowUps.length > 0 && messages.length > 0 && messages[messages.length - 1].role === 'model' && (
             <div className="flex flex-col items-center gap-3 mt-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
                 <div className="flex items-center gap-2 text-[10px] text-amber-500/70 uppercase tracking-widest font-bold">
                     <Lightbulb className="w-3 h-3" /> 
@@ -1693,6 +1719,22 @@ const ChatInterface: React.FC<Props> = ({
         <div ref={messagesEndRef} />
       </div>
 
+      {setupWizardComplete && pendingQuestions && (
+        <QuestionSelector
+          questions={pendingQuestions}
+          onSubmit={(selectedIds) => {
+            const selected = pendingQuestions.filter(q => selectedIds.includes(q.id));
+            const messageText = selected.map(q => q.text).join(' ');
+            setPendingQuestions(null);
+            void handleSend(messageText);
+          }}
+          onCancel={() => {
+            setPendingQuestions(null);
+            void handleSend('cancel');
+          }}
+        />
+      )}
+
       {/* Attachments Preview */}
       {attachments.length > 0 && (
           <div className="bg-[#1a1638]/90 border-t border-indigo-900/30 p-2 flex gap-2 overflow-x-auto no-scrollbar relative z-20">
@@ -1707,6 +1749,7 @@ const ChatInterface: React.FC<Props> = ({
       )}
 
       {/* Input Area */}
+      {!pendingQuestions && (
       <div className="relative z-20 bg-[#120f26] border-t border-amber-900/20 p-3 sm:p-4 pb-4 sm:pb-5">
         <div className={`relative flex items-end gap-2 p-2 rounded-xl border transition-all shadow-inner ${isGodMode ? 'bg-[#1a1638] border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.1)]' : 'bg-[#0B0c15] border-indigo-900/50 focus-within:border-amber-500/50 focus-within:ring-1 focus-within:ring-amber-500/20'}`}>
             <input 
@@ -1770,6 +1813,7 @@ const ChatInterface: React.FC<Props> = ({
            <span>{cultureMode === 'JP' ? "決定論的真実" : cultureMode === 'HI' ? "नियतिवादी सत्य" : "DETERMINISTIC TRUTH"}</span>
         </div>
       </div>
+      )}
       
       {selectionToolbar && (
         <div
