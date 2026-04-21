@@ -109,9 +109,11 @@ export class GeminiService {
       typeof usage.cachedContentTokenCount === 'number'
         ? usage.cachedContentTokenCount
         : 0;
-    const cachedInputCost = (cachedTokens * 0.135) / 1e6;
-    const uncachedInputCost = (Math.max(0, inputTokens - cachedTokens) * 1.25) / 1e6;
-    const outputCost = (outputTokens * 10.0) / 1e6;
+    // Gemini 3 Pro Preview rates (verified 2026-04-21)
+    // Source: ai.google.dev/pricing
+    const cachedInputCost = (cachedTokens * 0.2) / 1e6;
+    const uncachedInputCost = (Math.max(0, inputTokens - cachedTokens) * 2.0) / 1e6;
+    const outputCost = (outputTokens * 12.0) / 1e6;
     const costUsd =
       Math.round((cachedInputCost + uncachedInputCost + outputCost) * 1e6) / 1e6;
     return { inputTokens, outputTokens, cachedTokens, costUsd };
