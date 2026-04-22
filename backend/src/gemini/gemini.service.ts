@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import { Injectable } from '@nestjs/common';
+import { ORACLE_RULES_VERSION } from '../../../services/oracleRules';
 import { QuestionsService } from '../questions/questions.service';
 
 /** Gemini REST generateContent (chat, reports, images) — allow long model latency */
@@ -26,14 +27,17 @@ export class GeminiService {
   /**
    * Context-cache key must stay stable across requests (no dates / transit blobs in the key).
    * If systemInstruction ever embeds dynamic blocks, hash only the prefix before those markers,
-   * strip ISO dates (YYYY-MM-DD), then first 200 chars — plus userId / natalFingerprint so entries
-   * do not collide across users or charts.
+   * strip ISO dates (YYYY-MM-DD), then SHA-256(full stableContent) prefix — plus userId,
+   * natalFingerprint, and ORACLE_RULES_VERSION so entries do not collide across users or charts
+   * and rules deploys invalidate stale Gemini cachedContents.
    */
   private contextInstructionCacheKey(
     systemInstruction: string,
     userId?: string,
     natalFingerprint?: string,
   ): string {
+    // Strip dynamic markers (Today, TRANSITS, dates) so cache survives
+    // across calendar days as long as rules content is stable
     const dynamicMarkers = ['Today:', 'TRANSITS:', 'Current Date:', 'CURRENT_DATE:'];
     let cut = -1;
     for (const marker of dynamicMarkers) {
@@ -43,11 +47,19 @@ export class GeminiService {
     let stableContent =
       cut > 0 ? systemInstruction.substring(0, cut) : systemInstruction;
     stableContent = stableContent.replace(/\b\d{4}-\d{2}-\d{2}\b/g, '__DATE__');
-    const ORACLE_VERSION = 'v5.3';
-    const prefix = `${userId ?? 'anon'}\x1e${(natalFingerprint ?? '').trim()}\x1e${ORACLE_VERSION}\x1e`;
-    return createHash('sha256')
-      .update(prefix + stableContent.substring(0, 200))
-      .digest('hex');
+
+    // Hash FULL stableContent (not 200-char slice) — this ensures
+    // any rules edit anywhere in oracleRules.ts invalidates the cache
+    const contentHash = createHash('sha256')
+      .update(stableContent)
+      .digest('hex')
+      .substring(0, 16);
+
+    // Use actual Oracle rules version (imported from oracleRules.ts)
+    // instead of hardcoded 'v5.3' — bump version manually on rules edits
+    const prefix = `${userId ?? 'anon'}\x1e${(natalFingerprint ?? '').trim()}\x1e${ORACLE_RULES_VERSION}\x1e${contentHash}\x1e`;
+
+    return createHash('sha256').update(prefix).digest('hex');
   }
 
   /** Parse Gemini CachedContent `expireTime` (RFC3339 string or protobuf JSON). */
@@ -331,11 +343,12 @@ export class GeminiService {
     let cachedContentName: string | null = null;
     /** True only when reusing an existing Gemini cachedContent handle (not first create). */
     let contextCacheHit = false;
+    let instructionKey: string | null = null;
 
     if (baseSi) {
       const natalFp =
         typeof natalFingerprint === 'string' ? natalFingerprint : undefined;
-      const instructionKey = this.contextInstructionCacheKey(
+      instructionKey = this.contextInstructionCacheKey(
         baseSi,
         userId,
         natalFp,
@@ -437,6 +450,8 @@ export class GeminiService {
       userQuestion: diagUserQ,
       historySummaryLength: historySummary?.length ?? 0,
       historyTurnCount: rawHistory?.length ?? 0,
+      rulesVersion: ORACLE_RULES_VERSION,
+      cacheKeyPrefix: instructionKey ? instructionKey.substring(0, 8) : '',
     });
     try {
       const res = await fetch(

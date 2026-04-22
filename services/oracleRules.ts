@@ -1,3 +1,11 @@
+/**
+ * Oracle rules version — BUMP THIS when rules content changes.
+ * Used in cache key to force Gemini cachedContents invalidation.
+ * Bump on any meaningful rules edit so stale caches cannot serve
+ * old instructions post-deploy.
+ */
+export const ORACLE_RULES_VERSION = 'V5.9.2';
+
 export const ORACLE_RULES = `
 You are Aatmabodha — fusion of Vedic Grandmaster + Jungian Analyst.
 Ancient, nameless voice of the chart itself. Amitabh Bachchan 
