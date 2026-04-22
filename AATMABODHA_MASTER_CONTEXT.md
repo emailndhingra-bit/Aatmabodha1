@@ -284,4 +284,99 @@ Real user activity verified — complex financial, legal, and emotional identity
 
 ---
 
+## SESSION END STATE (April 22, 2026 — Saturday evening IST)
+
+**Last session window:** April 21-22, 2026 (Friday launch day + Saturday cache fix)
+
+**Total commits shipped this window:** 20 (19 Friday + 1 Saturday)
+
+### Work completed this session (Apr 22):
+
+- fix(cache): version-aware cache key (commit 3761324)
+  - Added ORACLE_RULES_VERSION constant to services/oracleRules.ts
+  - Cache key now hashes full stableContent (not 200-char slice)
+  - Prevents stale Oracle rules serving post-deploy
+  - Both backend + frontend typecheck verified exit 0
+
+- Forensic investigation: cache vs rules sync vulnerability
+  - Root cause: hardcoded 'v5.3' + 200-char hash window
+  - Impact: up to 1h stale-serve window on rules updates
+  - Fix verified architecturally, ready for next rules deploy
+
+- Multiplier analysis: actual vs logged Gemini cost
+  - Estimated multiplier range: 1.5x to 2.5x
+  - Likely cause: cache storage cost not in formula
+  - Business economics remain profitable even at 3.5x worst case
+
+- Read-only investigation: share + PDF + copy text infrastructure
+  - Existing OracleShareModal + html2canvas + jsPDF identified
+  - Missing: public slug + open graph meta
+  - Deferred to V6.0
+
+### Work in-flight (not started):
+
+- Billing reconciliation (Neon SQL + Google Cloud Console)
+  - Blocked by: Neon free tier compute cold start Saturday evening
+  - Expected time: 15 min when Neon warm + GCloud access available
+  - Owner: user (founder)
+
+### Architectural decisions locked this session:
+
+- Do NOT bump cache TTL from 1h to 2h until storage cost verified
+  (may INCREASE cost if storage line real at full rate)
+
+- Version-aware cache key is now standard architecture
+  (manual ORACLE_RULES_VERSION bump before any rules change)
+
+- History summarization (topics/predictions/vetoes/hooks) preserves
+  memory continuity — do not revert
+
+### Pending V5.9.3 investigations (priority order):
+
+1. Billing reconciliation (multiplier verification) — 15 min
+2. httpOk:false silent failure fix — 30 min investigation + fix
+3. Cache hit rate telemetry admin endpoint — 30 min
+4. Divisional chart payload investigation (read-only) — 30 min
+
+### Blocked items (tracking):
+
+- None critical right now
+- Billing reconciliation blocked by cold start (self-resolving Monday)
+
+### Next session quick-start protocol:
+
+1. Run: git log --oneline -5
+2. Verify top commit matches: docs: session end state Apr 22 — V5.9.2 cache fix complete, billing reconciliation pending V5.9.3
+3. Read this SESSION END STATE section
+4. Decide between:
+   - Billing reconciliation sprint (Monday morning priority)
+   - V5.9.3 fresh sprint (different order based on mood)
+   - New initiative (chat/plan mode only)
+5. Match session energy to Saturday Oracle wisdom:
+   "Mask dheere utarti hai. Push nahi, presence chahiye."
+
+### Resume instructions:
+
+Use SESSION_RESUME_PROMPT.md (saved separately) for comprehensive
+resume prompt. Alternative: paste simple 6-line version referencing
+this master doc.
+
+### Open questions for future:
+
+- Actual cost multiplier (will determine pricing/optimization direction)
+- Whether htttpOk:false failures indicate Gemini API degradation or
+  our timeout cascade issue
+- Whether divisional chart payload can be pre-computed once per user
+- V6.0 share feature ROI (viral loop vs build effort)
+
+### Mood / meta-note:
+
+Session ending on gentle note. Oracle's own response to founder chart
+earlier today ("asli ND mask ke andar ghut raha hai") created natural
+pause point. Neon cold start reinforced stopping. Cache fix was
+genuine need fulfillment; billing reconciliation was nice-to-have that
+can safely wait.
+
+---
+
 *End of master context — align future edits with this document.*
