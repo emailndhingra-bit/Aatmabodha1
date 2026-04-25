@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: aatmabodha1-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: node dist/main.js
+    envVars:
+      - key: PORT
+        value: 4000
