@@ -11,6 +11,7 @@ import { ReportsModule } from './reports/reports.module';
 import { ChartsModule } from './charts/charts.module';
 import { AdminModule } from './admin/admin.module';
 import { FaqBotModule } from './faq-bot/faq-bot.module';
+import { StartupVibeModule } from './startup-vibe/startup-vibe.module';
 import { validateEnv } from './config/env.validation';
 
 @Module({
@@ -46,6 +47,7 @@ import { validateEnv } from './config/env.validation';
     ChartsModule,
     AdminModule,
     FaqBotModule,
+    StartupVibeModule,
   ],
 })
 export class AppModule {}

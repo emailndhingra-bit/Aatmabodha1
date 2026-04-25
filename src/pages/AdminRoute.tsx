@@ -2,9 +2,19 @@ import { useEffect, useState } from 'react';
 import AdminDashboard from './AdminDashboard';
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || 'https://aatmabodha1-backend.onrender.com';
-const ADMIN_EMAIL = 'emailndhingra@gmail.com';
+const DEFAULT_ADMIN_EMAILS = 'emailndhingra@gmail.com,amol.xlri@gmail.com';
 
-/** Only the configured admin may load /admin; everyone else is redirected home with no message. */
+function isAdminEmail(email: string | undefined | null): boolean {
+  if (!email) return false;
+  const raw = import.meta.env.VITE_ADMIN_EMAILS || DEFAULT_ADMIN_EMAILS;
+  return raw
+    .split(',')
+    .map((e) => e.trim())
+    .filter(Boolean)
+    .includes(email.trim());
+}
+
+/** Only allowlisted admins may load /admin; everyone else is redirected home with no message. */
 export default function AdminRoute() {
   const [allowed, setAllowed] = useState(false);
 
@@ -22,7 +32,7 @@ export default function AdminRoute() {
         });
         const user = r.ok ? await r.json() : null;
         if (cancelled) return;
-        if (!user || user.email !== ADMIN_EMAIL) {
+        if (!user || !isAdminEmail(user.email)) {
           window.location.replace('/');
           return;
         }
