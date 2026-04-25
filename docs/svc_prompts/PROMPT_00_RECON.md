@@ -1,5 +1,9 @@
 # PHASE 0 — RECON
 
+**STATUS (as of V1.0.1 spec revision): COMPLETED.** This file is preserved for reference. Findings and decisions have been folded into `STARTUP_VIBE_MASTER_CONTEXT.md` V1.0.1. If you are running Phase 1, skip directly to `PROMPT_01_FOUNDATION.md`.
+
+---
+
 **Goal:** Verify the codebase before touching anything. Answer 10 open questions. Report findings. **Do not modify any files.**
 
 ---

@@ -28,7 +28,7 @@ Run the migration locally. Verify tables exist via `\dt svc_*` or equivalent.
 
 ### 2. NestJS module skeleton
 
-Create `apps/backend/src/startup-vibe/` with structure from §12 of master context. **Only create the files needed for Phase 1:**
+Create `backend/src/startup-vibe/` with structure from §12 of master context. **Only create the files needed for Phase 1:**
 
 - `startup-vibe.module.ts`
 - `startup-vibe.controller.ts`
@@ -53,19 +53,19 @@ Apply existing admin auth middleware to **every** route on the new controller. U
 Implement these and only these:
 
 ```
-POST   /admin/api/svc/sessions
-GET    /admin/api/svc/sessions
-GET    /admin/api/svc/sessions/:id
-POST   /admin/api/svc/sessions/:id/people
-DELETE /admin/api/svc/sessions/:id/people/:personId
-DELETE /admin/api/svc/sessions/:id
+POST   /api/admin/svc/sessions
+GET    /api/admin/svc/sessions
+GET    /api/admin/svc/sessions/:id
+POST   /api/admin/svc/sessions/:id/people
+DELETE /api/admin/svc/sessions/:id/people/:personId
+DELETE /api/admin/svc/sessions/:id
 ```
 
 Validation per §3 schema. Use class-validator on DTOs.
 
 Constraints:
 - Min 2, max 8 people per session (enforced server-side).
-- DOB required, TOB optional.
+- DOB required, **TOB required** (chart service mandates it; locked V1.0.1).
 - POB requires `pob_city`; if `pob_lat`/`pob_lon`/`pob_tz` not provided, attempt resolution server-side (use existing geocoding util if Aatmabodha has one — flag if it doesn't and we'll decide whether to add one).
 
 ### 5. Chart fetcher service
@@ -74,7 +74,7 @@ Constraints:
 - Method: `fetchChartForPerson(person: SvcPerson): Promise<ChartJson>`.
 - Calls the existing Flask chart service using the contract you documented in Phase 0 recon.
 - On success, stores `chart_json` on the `svc_people` row.
-- On TOB missing, calls service with the documented degraded mode and stores result.
+- TOB is mandatory (locked V1.0.1) — no degraded-mode handling needed; if TOB is somehow missing at this layer, throw a typed validation error before calling the chart service.
 - On chart service timeout (>15s), throws a typed error the controller can map to a clear UI message.
 
 `POST /sessions/:id/people` should call this synchronously before returning. If chart fetch fails, the person row is still created (so the user can retry) but `chart_json` is null and the response includes a `chart_status: "failed"` flag.
@@ -95,10 +95,10 @@ Sidebar: add "Startup Vibe Check" entry under "Admin Tools" (create the section 
 
 Run all of these. They are F1–F5 from §11 of master context:
 
-- F1. Unauthenticated `GET /admin/api/svc/sessions` → 401.
+- F1. Unauthenticated `GET /api/admin/svc/sessions` → 401.
 - F2. Authenticated non-admin → 403.
 - F3. Submit 1 person → 400. 9 → 400. 2–8 → 200.
-- F4. Person without TOB → row created, chart fetch succeeds with degraded mode, `chart_json.time_unknown` flag set.
+- F4. Person without TOB → 400 at submit (TOB is required by validation; locked V1.0.1).
 - F5. POB with no resolvable lat/lon/tz → 400 at submit.
 
 Plus:

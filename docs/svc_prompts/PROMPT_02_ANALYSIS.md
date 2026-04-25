@@ -51,7 +51,7 @@ Extend the existing Gemini service (do not create a new one) with a method `runS
 
 ### 4. Analyze endpoint
 
-`POST /admin/api/svc/sessions/:id/analyze`:
+`POST /api/admin/svc/sessions/:id/analyze`:
 
 Flow per §10 of master context (was §10 in original; locate flow steps in master context §11 acceptance tests + §8):
 1. Load session + people.
@@ -62,7 +62,7 @@ Flow per §10 of master context (was §10 in original; locate flow steps in mast
 6. Persist `svc_results` row with `result_json`, `rules_version`, `generation_ms`, `cache_hit`.
 7. Return the persisted row.
 
-Plus `GET /admin/api/svc/sessions/:id/results` — list past results for a session, paginated, ordered desc by `generated_at`.
+Plus `GET /api/admin/svc/sessions/:id/results` — list past results for a session, paginated, ordered desc by `generated_at`.
 
 Rate limit: 5 analyses per admin per hour. Header `X-RateLimit-*` set on responses.
 

@@ -1,11 +1,13 @@
 # STARTUP_VIBE_MASTER_CONTEXT.md
 
 **Module:** Startup Vibe Check (admin-only, inside Aatmabodha)
-**Version:** V1.0.0
+**Version:** V1.0.1
 **Audience:** Cursor + future-self continuity
 **Last updated:** April 25, 2026
 
 This file is the canonical spec. Every per-phase build prompt references it. Do not delete or rename.
+
+**Revision V1.0.1 (post-Phase 0 recon):** Backend path corrected to `backend/src/`. TOB locked mandatory. Summarization aligned to Oracle's deterministic regex pattern (no LLM call). Gemini model name corrected to `gemini-3.1-pro-preview`.
 
 ---
 
@@ -31,7 +33,7 @@ This is internal tooling. Not a public product. Voice is analyst-to-analyst — 
 ## 2 · ARCHITECTURAL LOCKS — DO NOT VIOLATE
 
 - **Do not** modify Oracle rules version, Oracle prompt, or Oracle cache.
-- **Do not** expose `/admin/api/svc/*` routes without admin guard. Triple-check the middleware chain.
+- **Do not** expose `/api/admin/svc/*` routes without admin guard. Triple-check the middleware chain.
 - **Do not** share Gemini cache namespace with Oracle. Startup Vibe uses its own namespace `svc:` and `svc-chat:`.
 - **Do not** introduce a new UI library. Use existing primitives.
 - **Do not** introduce a new auth provider. Use existing admin auth.
@@ -40,16 +42,26 @@ This is internal tooling. Not a public product. Voice is analyst-to-analyst — 
 - **Do not** chain shell commands with `&&` (PowerShell on Windows).
 - **Bump `STARTUP_VIBE_RULES_VERSION` before any prompt edit.** Same discipline as Oracle's `ORACLE_RULES_VERSION`. The Apr 22 cache fix in Oracle exists because of a missed bump — do not repeat.
 
+### Phase 0 recon — confirmed implementation details (V1.0.1)
+
+The following are **observed in the actual repo** and should be used verbatim — do not re-derive:
+
+- **Admin auth chain:** `@UseGuards(JwtAuthGuard, AdminGuard)`. `AdminGuard` lives at `backend/src/guards/admin.guard.ts` and compares `request.user.email` against `ADMIN_EMAILS` env (comma-separated allowlist). No DB role table. No `@Roles()` decorator. SVC controllers use this exact chain. **Global API prefix is `api`** — all SVC routes use `/api/admin/svc/*`. The original spec had the prefix order reversed; this is now corrected throughout the document.
+- **Chart service:** `POST {CHART_API_URL}/api/chart` with `{ date_of_birth, time_of_birth, latitude, longitude, timezone? }`. Returns `D1`, `D2`, `D9`, `D20`, `D24`, `D27`, `Varshphal_Details`, `Derived_Metrics`, etc. **TOB is required by the DTO** — see §3 schema (TOB locked NOT NULL).
+- **Gemini service:** `backend/src/gemini/gemini.service.ts`. Model: `gemini-3.1-pro-preview`. Cache mechanism: Google `cachedContents` keyed by `displayName`. Oracle uses an opaque SHA-256 hex string as `displayName`. SVC uses `displayName` strings prefixed `svc:` and `svc-chat:` — these will never collide with Oracle's 64-char hex keys.
+- **Streaming:** Oracle does not stream. SVC does not stream. Single `generateContent` POST, single JSON response.
+- **Summarization:** Deterministic regex compaction, not LLM (see §9.4).
+
 ### What this module reuses
 
-- Chart service (Flask + Swiss Ephemeris on Replit) — same endpoint Oracle uses. No changes.
-- Gemini 3 Pro Preview — same NestJS service Oracle uses. Add new methods, do not edit existing.
+- Chart service (Flask + Swiss Ephemeris on Replit) — same endpoint Oracle uses (`POST /api/chart`). No changes.
+- Gemini `gemini-3.1-pro-preview` via existing NestJS `gemini.service.ts`. Add new methods, do not edit existing Oracle methods.
 - PostgreSQL (Neon) — new tables only.
-- Frontend shell, dark theme, admin auth guard — reused.
+- Frontend shell, dark theme, admin auth guard (`JwtAuthGuard + AdminGuard` chain via email allowlist) — reused.
 
 ### What this module ships fresh
 
-- Backend module: `apps/backend/src/startup-vibe/`
+- Backend module: `backend/src/startup-vibe/`
 - Frontend route: `/admin/startup-vibe`
 - DB tables: `svc_sessions`, `svc_people`, `svc_results`, `svc_chat_threads`, `svc_chat_messages`
 - Cached system instructions: `STARTUP_VIBE_RULES_VERSION` namespace (analysis + chat sub-namespaces)
@@ -77,7 +89,7 @@ CREATE TABLE svc_people (
   session_id      UUID REFERENCES svc_sessions(id) ON DELETE CASCADE,
   display_name    TEXT NOT NULL,
   dob             DATE NOT NULL,
-  tob             TIME,                    -- nullable; degrade gracefully if missing
+  tob             TIME NOT NULL,           -- mandatory; chart service requires it (locked V1.0.1)
   pob_city        TEXT NOT NULL,
   pob_lat         NUMERIC,
   pob_lon         NUMERIC,
@@ -137,22 +149,22 @@ CREATE INDEX idx_svc_chat_msgs_thread  ON svc_chat_messages(thread_id, created_a
 
 ```
 # Sessions + people + analysis
-POST   /admin/api/svc/sessions
-GET    /admin/api/svc/sessions
-GET    /admin/api/svc/sessions/:id
-POST   /admin/api/svc/sessions/:id/people
-DELETE /admin/api/svc/sessions/:id/people/:personId
-POST   /admin/api/svc/sessions/:id/analyze
-GET    /admin/api/svc/sessions/:id/results
-DELETE /admin/api/svc/sessions/:id
+POST   /api/admin/svc/sessions
+GET    /api/admin/svc/sessions
+GET    /api/admin/svc/sessions/:id
+POST   /api/admin/svc/sessions/:id/people
+DELETE /api/admin/svc/sessions/:id/people/:personId
+POST   /api/admin/svc/sessions/:id/analyze
+GET    /api/admin/svc/sessions/:id/results
+DELETE /api/admin/svc/sessions/:id
 
 # Chat
-POST   /admin/api/svc/sessions/:id/chat/threads
-GET    /admin/api/svc/sessions/:id/chat/threads
-GET    /admin/api/svc/chat/threads/:threadId
-POST   /admin/api/svc/chat/threads/:threadId/messages
-DELETE /admin/api/svc/chat/threads/:threadId
-POST   /admin/api/svc/chat/threads/:threadId/regenerate
+POST   /api/admin/svc/sessions/:id/chat/threads
+GET    /api/admin/svc/sessions/:id/chat/threads
+GET    /api/admin/svc/chat/threads/:threadId
+POST   /api/admin/svc/chat/threads/:threadId/messages
+DELETE /api/admin/svc/chat/threads/:threadId
+POST   /api/admin/svc/chat/threads/:threadId/regenerate
 ```
 
 All routes guarded by admin middleware. 401 if unauthenticated, 403 if non-admin.
@@ -376,9 +388,18 @@ Cache key: `svc-chat:${rules_version}:${result_id}`. One cached instruction per 
 
 Sent to backend with each message; inserted into the user prompt envelope.
 
-### 9.4 History management
+### 9.4 History management (LOCKED V1.0.1 — match Oracle exactly)
 
-Match Oracle's pattern. Turns 1–N (default N=8) full verbatim; beyond N, oldest turns folded into a rolling `summary` regenerated every N turns. Confirm Oracle's exact N during recon — match it.
+**Oracle does NOT use LLM summarization.** Phase 0 recon confirmed: Oracle takes `history.slice(-6)` (last 6 turns) and runs a deterministic regex-based compaction looking for reference tags, % predictions, veto-like phrases, and trailing questions. If anything matches, a `[Prior conversation summary] ... [End summary]` block (max 1500 chars) is prepended to the user turn. If nothing matches, no summary is prepended. **Zero Gemini calls for summarization.**
+
+**Startup Vibe Check matches this exactly:**
+
+- Window: `history.slice(-6)` — last 6 turns sent verbatim with each message.
+- Compaction: same regex patterns as Oracle's `buildHistorySummary()` in `backend/src/gemini/gemini.service.ts`. Reuse the function if it can be made generic; otherwise copy the exact regex set into `chat/chat-history-summarizer.ts` and document the source.
+- The `svc_chat_threads.summary` column **is not a stored LLM summary** — it is unused in V1.0.1 and reserved for V2 if we later want true rolling summarization. Keep the column in the schema for forward compatibility.
+- Cost lock: chat must add **zero additional Gemini calls** beyond the per-message generation. No summarizer model, no smaller model, no second pass.
+
+This decision is locked. Do not introduce LLM-based summarization without bumping `STARTUP_VIBE_RULES_VERSION` and explicit approval.
 
 ### 9.5 Chat system instruction outline
 
@@ -466,7 +487,7 @@ Chat panel layout (top to bottom):
 
 ### Foundation (Phase 1)
 
-F1. Unauthenticated request to `/admin/api/svc/sessions` → 401.
+F1. Unauthenticated request to `/api/admin/svc/sessions` → 401.
 F2. Authenticated non-admin → 403.
 F3. Submit 1 person → 400. Submit 9 → 400. 2 to 8 → 200.
 F4. Person without TOB → analysis runs, dasha confidence flagged "low" in output.
@@ -508,8 +529,10 @@ P4. Rate limit triggered → 429 with retry-after header, UI surfaces clearly.
 
 ## 12 · NESTJS MODULE STRUCTURE
 
+**Real backend path** is `backend/src/startup-vibe/` (confirmed in Phase 0 recon — the repo does not use a monorepo `apps/backend/` layout).
+
 ```
-apps/backend/src/startup-vibe/
+backend/src/startup-vibe/
 ├── startup-vibe.module.ts
 ├── startup-vibe.controller.ts
 ├── startup-vibe.service.ts

@@ -9,7 +9,10 @@
 1. View `STARTUP_VIBE_MASTER_CONTEXT.md`. Re-read §9 (chat module) thoroughly + §11 acceptance tests C1–C12.
 2. Confirm Phase 2 is merged. `git status` clean.
 3. New branch: `feat/svc-chat`.
-4. Confirm you have the answer from Phase 0 recon Check 4 (Oracle's history-summarization threshold N) and Check 5 (Oracle's streaming pattern). If you don't, re-check before building.
+4. **Phase 0 recon answers locked into spec V1.0.1 (re-read master context §9.4):**
+   - Oracle does NOT use LLM summarization. Deterministic regex compaction over `history.slice(-6)`.
+   - Oracle does NOT stream. Single `generateContent` POST.
+   - Match both exactly. Zero new Gemini calls beyond the per-message generation.
 
 ## DELIVERABLES
 
@@ -38,10 +41,10 @@ If you find yourself softening any of these to feel more "polite," stop. The who
 - Returns the cached content reference for use in the per-turn Gemini call.
 
 `chat/chat-history-summarizer.ts`:
-- Method: `maybeUpdateSummary(threadId)`.
-- After every N turns (use the value from Oracle recon — match it), regenerate the rolling summary. Use a smaller Gemini model if Oracle does, otherwise same model.
-- Persists `summary` on the `svc_chat_threads` row.
-- The summary is one paragraph capturing the analytical thread of the conversation so far.
+- **Match Oracle's `buildHistorySummary()` in `backend/src/gemini/gemini.service.ts` exactly.** No LLM calls.
+- Take `history.slice(-6)`. Run the same regex set Oracle uses (reference tags, % predictions, veto-like phrases, trailing questions). If anything matches, build a `[Prior conversation summary] ... [End summary]` block (max 1500 chars) and prepend to the user turn. If nothing matches, prepend nothing.
+- Reuse Oracle's helper if it can be made generic; otherwise copy the exact regex set with a comment citing the source line in `gemini.service.ts`.
+- The `svc_chat_threads.summary` column stays in the schema for forward compatibility but is **not written by V1**. Leave it null.
 
 `chat/chat-scope-resolver.ts`:
 - Method: `formatScopeForPrompt(scopeKind, scopePersonIds, hypotheticalNote, people)`.
@@ -65,12 +68,12 @@ If you find yourself softening any of these to feel more "polite," stop. The who
 ### 3. Chat endpoints
 
 ```
-POST   /admin/api/svc/sessions/:id/chat/threads          # create thread, anchored to latest result by default
-GET    /admin/api/svc/sessions/:id/chat/threads          # list threads on session
-GET    /admin/api/svc/chat/threads/:threadId             # fetch thread + all messages
-POST   /admin/api/svc/chat/threads/:threadId/messages    # send message, return/stream reply
-DELETE /admin/api/svc/chat/threads/:threadId
-POST   /admin/api/svc/chat/threads/:threadId/regenerate  # regenerate last assistant message
+POST   /api/admin/svc/sessions/:id/chat/threads          # create thread, anchored to latest result by default
+GET    /api/admin/svc/sessions/:id/chat/threads          # list threads on session
+GET    /api/admin/svc/chat/threads/:threadId             # fetch thread + all messages
+POST   /api/admin/svc/chat/threads/:threadId/messages    # send message, return/stream reply
+DELETE /api/admin/svc/chat/threads/:threadId
+POST   /api/admin/svc/chat/threads/:threadId/regenerate  # regenerate last assistant message
 ```
 
 Admin auth on all routes. Rate limit: 30 messages per admin per hour, separate from analysis rate limit.
@@ -109,7 +112,7 @@ Run §11 tests C1–C12 from master context:
 - C5. Hypothetical → reasons structurally without inventing a person; projects directional dimension changes.
 - C6. Missing-person guard → states plainly, does not invent.
 - C7. Cache hit on messages 2, 3.
-- C8. Summarization beyond turn threshold → `summary` non-null.
+- C8. Summarization: when `history.slice(-6)` contains a turn with reference tags / % predictions / veto phrases / trailing questions, the user prompt sent to Gemini contains a `[Prior conversation summary]` block. When none of those patterns match, no summary block is prepended. `svc_chat_threads.summary` column remains null in V1.
 - C9. Rules version bump → existing thread readable; new message rebuilds cache.
 - C10. Voice constraint regex check passes (no banned phrases in any assistant message during test run).
 - C11. Auth: 401 / 403 as expected.

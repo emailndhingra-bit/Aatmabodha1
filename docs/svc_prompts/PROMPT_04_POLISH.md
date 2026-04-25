@@ -75,7 +75,7 @@ Any place that currently shows a generic spinner: replace with skeleton screens 
 
 ### 8. Documentation
 
-Add `apps/backend/src/startup-vibe/README.md` covering:
+Add `backend/src/startup-vibe/README.md` covering:
 - Module purpose (one paragraph).
 - How to bump `STARTUP_VIBE_RULES_VERSION` and what triggers a bump (any prompt edit).
 - Cache key conventions (`svc:` and `svc-chat:`).
@@ -111,7 +111,7 @@ Reply with:
 1. Branch + commit hashes.
 2. All acceptance test results (foundation + analysis + chat + polish).
 3. Total token cost burned during testing across all phases (rough estimate).
-4. List of every file in `apps/backend/src/startup-vibe/` (sanity check structure).
+4. List of every file in `backend/src/startup-vibe/` (sanity check structure).
 5. Anything still rough that you'd flag before sharing this with a portfolio company.
 
 **Then stop. Phase 4 (PDF export, comparison view, etc.) is on-demand only.**
