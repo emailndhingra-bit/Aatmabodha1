@@ -9,6 +9,15 @@ export declare class ProfilesService {
     incrementQuestions(profileId: string): Promise<void>;
     getProfile(userId: string, profileId: string): Promise<Profile>;
     findById(profileId: string): Promise<Profile | null>;
+    listProfilesForReportsHub(search?: string): Promise<Array<{
+        id: string;
+        name: string;
+        dateOfBirth: string;
+        timeOfBirth: string;
+        placeOfBirth: string | null;
+        userId: string;
+        ownerEmail: string | null;
+    }>>;
     createAdminQuickProfile(adminUserId: string, data: Pick<Profile, 'name' | 'gender' | 'dateOfBirth' | 'timeOfBirth' | 'placeOfBirth' | 'latitude' | 'longitude'> & {
         timezone?: number | string | null;
     }): Promise<Profile>;

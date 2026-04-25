@@ -18,6 +18,15 @@ export declare class QuestionsService {
         cacheHit?: boolean;
         costUsd?: number;
         sessionId?: string;
+        chartContext?: {
+            userMoonSign?: string;
+            userLagna?: string;
+            userAtmakaraka?: string;
+            userSadeSati?: boolean;
+            userDashaType?: string;
+            ageGroup?: string;
+            dashaAtTime?: string;
+        };
     }): Promise<QuestionLog>;
     nullifyQuestionText(): Promise<void>;
     getAdminQuestions(limit?: number): Promise<any[]>;

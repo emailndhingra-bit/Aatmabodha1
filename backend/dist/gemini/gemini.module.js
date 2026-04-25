@@ -18,7 +18,7 @@ let GeminiModule = class GeminiModule {
 exports.GeminiModule = GeminiModule;
 exports.GeminiModule = GeminiModule = __decorate([
     (0, common_1.Module)({
-        imports: [questions_module_1.QuestionsModule, reports_module_1.ReportsModule, users_module_1.UsersModule],
+        imports: [questions_module_1.QuestionsModule, (0, common_1.forwardRef)(() => reports_module_1.ReportsModule), users_module_1.UsersModule],
         controllers: [gemini_controller_1.GeminiController],
         providers: [gemini_service_1.GeminiService],
         exports: [gemini_service_1.GeminiService],

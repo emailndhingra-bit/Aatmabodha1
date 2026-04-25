@@ -20,6 +20,7 @@ const reports_module_1 = require("./reports/reports.module");
 const charts_module_1 = require("./charts/charts.module");
 const admin_module_1 = require("./admin/admin.module");
 const faq_bot_module_1 = require("./faq-bot/faq-bot.module");
+const startup_vibe_module_1 = require("./startup-vibe/startup-vibe.module");
 const env_validation_1 = require("./config/env.validation");
 let AppModule = class AppModule {
 };
@@ -58,6 +59,7 @@ exports.AppModule = AppModule = __decorate([
             charts_module_1.ChartsModule,
             admin_module_1.AdminModule,
             faq_bot_module_1.FaqBotModule,
+            startup_vibe_module_1.StartupVibeModule,
         ],
     })
 ], AppModule);

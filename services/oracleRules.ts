@@ -3,6 +3,8 @@
  * Used in cache key to force Gemini cachedContents invalidation.
  * Bump on any meaningful rules edit so stale caches cannot serve
  * old instructions post-deploy.
+ *
+ * Keep in sync with `backend/src/config/oracle-rules-version.ts` (Nest cache keys).
  */
 export const ORACLE_RULES_VERSION = 'V5.9.2';
 

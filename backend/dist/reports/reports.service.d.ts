@@ -1,8 +1,10 @@
 import { Repository } from 'typeorm';
 import { Report } from './report.entity';
+import { GeminiService } from '../gemini/gemini.service';
 export declare class ReportsService {
     private readonly repo;
-    constructor(repo: Repository<Report>);
+    private readonly gemini;
+    constructor(repo: Repository<Report>, gemini: GeminiService);
     logReport(userId: string, profileName: string, reportType: string, title: string, content: string, language: string): Promise<Report>;
     getAdminReports(page?: number, limit?: number, reportType?: string): Promise<{
         items: Report[];
@@ -20,4 +22,7 @@ export declare class ReportsService {
         countThisWeek: number;
     }>;
     private getStartOfWeekMonday;
+    generateChildDestiny(promptParts: string[]): Promise<{
+        report: string;
+    }>;
 }

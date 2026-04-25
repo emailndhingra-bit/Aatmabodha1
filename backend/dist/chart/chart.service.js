@@ -22,7 +22,7 @@ let ChartService = class ChartService {
     constructor(chartReqRepo) {
         this.chartReqRepo = chartReqRepo;
     }
-    async createChart(body) {
+    async createChart(body, options) {
         const rec = this.chartReqRepo.create({
             requestBody: body,
             responseBody: null,
@@ -32,11 +32,11 @@ let ChartService = class ChartService {
         try {
             const baseUrl = process.env.CHART_API_URL ?? 'https://flask-creator-nitingauri2008.replit.app';
             const url = `${baseUrl.replace(/\/$/, '')}/api/chart`;
+            const timeoutMs = options?.timeoutMs ??
+                (process.env.CHART_API_TIMEOUT_MS ? Number(process.env.CHART_API_TIMEOUT_MS) : 60_000);
             const res = await axios_1.default.post(url, body, {
                 headers: { 'Content-Type': 'application/json' },
-                timeout: process.env.CHART_API_TIMEOUT_MS
-                    ? Number(process.env.CHART_API_TIMEOUT_MS)
-                    : 60_000,
+                timeout: timeoutMs,
             });
             rec.responseBody = res.data;
             await this.chartReqRepo.save(rec);

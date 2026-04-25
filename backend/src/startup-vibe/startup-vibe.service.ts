@@ -2,7 +2,9 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -16,7 +18,9 @@ import { SvcSessionEntity } from './entities/svc-session.entity';
 const MAX_PEOPLE = 8;
 
 @Injectable()
-export class StartupVibeService {
+export class StartupVibeService implements OnModuleInit {
+  private readonly logger = new Logger(StartupVibeService.name);
+
   constructor(
     @InjectRepository(SvcSessionEntity)
     private readonly sessions: Repository<SvcSessionEntity>,
@@ -25,6 +29,10 @@ export class StartupVibeService {
     private readonly pobResolve: PobResolveService,
     private readonly chartFetcher: ChartFetcherService,
   ) {}
+
+  onModuleInit() {
+    this.logger.log('StartupVibeModule ready (admin routes: /api/admin/svc/sessions)');
+  }
 
   async createSession(adminUserId: string, dto: CreateSessionDto) {
     const session = this.sessions.create({

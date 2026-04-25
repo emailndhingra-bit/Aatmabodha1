@@ -15,8 +15,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReportsController = void 0;
 const common_1 = require("@nestjs/common");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
+const admin_guard_1 = require("../guards/admin.guard");
 const reports_service_1 = require("./reports.service");
 const log_report_dto_1 = require("./dto/log-report.dto");
+const generate_child_destiny_dto_1 = require("./dto/generate-child-destiny.dto");
 let ReportsController = class ReportsController {
     constructor(reportsService) {
         this.reportsService = reportsService;
@@ -26,6 +28,9 @@ let ReportsController = class ReportsController {
     }
     async logReport(req, body) {
         return this.reportsService.logReport(req.user.id, body.profileName, body.reportType, body.title, body.content, body.language);
+    }
+    async generateChildDestiny(body) {
+        return this.reportsService.generateChildDestiny(body.promptParts);
     }
 };
 exports.ReportsController = ReportsController;
@@ -46,6 +51,14 @@ __decorate([
     __metadata("design:paramtypes", [Object, log_report_dto_1.LogReportDto]),
     __metadata("design:returntype", Promise)
 ], ReportsController.prototype, "logReport", null);
+__decorate([
+    (0, common_1.Post)('child-destiny'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, admin_guard_1.AdminGuard),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [generate_child_destiny_dto_1.GenerateChildDestinyDto]),
+    __metadata("design:returntype", Promise)
+], ReportsController.prototype, "generateChildDestiny", null);
 exports.ReportsController = ReportsController = __decorate([
     (0, common_1.Controller)('reports'),
     __metadata("design:paramtypes", [reports_service_1.ReportsService])

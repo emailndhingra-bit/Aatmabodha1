@@ -43,7 +43,7 @@ export declare class AdminService {
         questionsLimit: number;
         customQuota: number;
         current_quota: number;
-        quota_source: "custom" | "default";
+        quota_source: "default" | "custom";
         createdAt: Date;
         updatedAt: Date;
     }>;

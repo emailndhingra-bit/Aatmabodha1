@@ -17,9 +17,11 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const report_entity_1 = require("./report.entity");
+const gemini_service_1 = require("../gemini/gemini.service");
 let ReportsService = class ReportsService {
-    constructor(repo) {
+    constructor(repo, gemini) {
         this.repo = repo;
+        this.gemini = gemini;
     }
     async logReport(userId, profileName, reportType, title, content, language) {
         const contentPreview = (content ?? '').substring(0, 500);
@@ -80,11 +82,27 @@ let ReportsService = class ReportsService {
         d.setHours(0, 0, 0, 0);
         return d;
     }
+    async generateChildDestiny(promptParts) {
+        const chunks = [];
+        for (const prompt of promptParts) {
+            const gen = await this.gemini.generateContent({
+                prompt,
+                responseFormat: 'text',
+                maxOutputTokens: 8192,
+                skipQuestionLog: true,
+                skipOutputTruncate: true,
+                skipInflightDedup: true,
+            }, undefined);
+            chunks.push(String(gen.text || '').trim());
+        }
+        return { report: chunks.join('\n\n---\n\n') };
+    }
 };
 exports.ReportsService = ReportsService;
 exports.ReportsService = ReportsService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(report_entity_1.Report)),
-    __metadata("design:paramtypes", [typeorm_2.Repository])
+    __metadata("design:paramtypes", [typeorm_2.Repository,
+        gemini_service_1.GeminiService])
 ], ReportsService);
 //# sourceMappingURL=reports.service.js.map

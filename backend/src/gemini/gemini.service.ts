@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { Injectable } from '@nestjs/common';
-import { ORACLE_RULES_VERSION } from '../../../services/oracleRules';
+import { ORACLE_RULES_VERSION } from '../config/oracle-rules-version';
 import { QuestionsService } from '../questions/questions.service';
 
 /** Gemini REST generateContent (chat, reports, images) — allow long model latency */
@@ -49,14 +49,14 @@ export class GeminiService {
     stableContent = stableContent.replace(/\b\d{4}-\d{2}-\d{2}\b/g, '__DATE__');
 
     // Hash FULL stableContent (not 200-char slice) — this ensures
-    // any rules edit anywhere in oracleRules.ts invalidates the cache
+    // any rules edit anywhere in the live rules blob invalidates the cache
     const contentHash = createHash('sha256')
       .update(stableContent)
       .digest('hex')
       .substring(0, 16);
 
-    // Use actual Oracle rules version (imported from oracleRules.ts)
-    // instead of hardcoded 'v5.3' — bump version manually on rules edits
+    // Oracle rules version from config/oracle-rules-version.ts — bump there
+    // and in services/oracleRules.ts together on rules edits
     const prefix = `${userId ?? 'anon'}\x1e${(natalFingerprint ?? '').trim()}\x1e${ORACLE_RULES_VERSION}\x1e${contentHash}\x1e`;
 
     return createHash('sha256').update(prefix).digest('hex');
