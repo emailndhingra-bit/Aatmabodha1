@@ -579,4 +579,11 @@ backend/src/startup-vibe/
 
 ---
 
+## 14 · DEPLOYMENT STATUS
+
+- **Phase 1:** Code-complete on commit `1235c9b`. SQL migration `backend/migrations/20260425120000_svc_foundation.sql` is **pending** a manual run against the Neon production database (not executed by the deploy pipeline). Checklist: `docs/svc_prompts/PHASE_1_DEPLOYMENT_CHECKLIST.md`.
+- **Rule:** Acceptance tests for any phase run **after** the corresponding migration has been applied to Neon **and** the backend is deployed to Render.
+
+---
+
 *END OF MASTER CONTEXT*
