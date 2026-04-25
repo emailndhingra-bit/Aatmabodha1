@@ -41,6 +41,7 @@ import Login from './src/pages/Login';
 import AuthCallback from './src/pages/AuthCallback';
 import PendingApproval from './src/pages/PendingApproval';
 import AdminRoute from './src/pages/AdminRoute';
+import StartupVibeAdmin from './src/pages/StartupVibeAdmin';
 import FloatingHelpBot from './components/FloatingHelpBot';
 
 type CultureMode = 'EN' | 'JP' | 'HI';
@@ -166,6 +167,7 @@ const App: React.FC = () => {
   if (path === '/login') return <Login />;
   if (path === '/auth/callback') return <AuthCallback />;
   if (path === '/auth/pending') return <PendingApproval />;
+  if (path === '/admin/startup-vibe') return <StartupVibeAdmin />;
   if (path === '/admin') return <AdminRoute />;
   
   const token = localStorage.getItem('auth_token');

@@ -1702,6 +1702,24 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid #2a2a4a' }}>
+        <div style={{ fontSize: 11, color: '#5a5a6c', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+          Admin tools
+        </div>
+        <a
+          href="/admin/startup-vibe"
+          style={{
+            display: 'inline-block',
+            fontSize: 14,
+            color: GOLD,
+            textDecoration: 'none',
+            fontWeight: 600,
+          }}
+        >
+          Startup Vibe Check →
+        </a>
+      </div>
+
       {/* TOP STATS */}
       {stats && (
         <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
