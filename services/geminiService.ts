@@ -1236,13 +1236,44 @@ KP_HOUSE_SIGNIFICATORS(which planets rule each house via KP):${JSON.stringify(kp
       const d9g = safeQuery(`SELECT planet_name, D9_Navamsha_house, D9_Navamsha_status FROM planets`);
       const d10g = safeQuery(`SELECT planet_name, D10_Dasamsa_house, D10_Dasamsa_status FROM planets`);
       const d60g = safeQuery(`SELECT planet_name, D60_Shastiamsa_house, D60_Shastiamsa_status FROM planets`);
-      const yoginiG = safeQuery(
-        `SELECT period_name, start_date, end_date FROM dashas WHERE system='Yogini' AND substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||substr(end_date,1,2) >= date('now') ORDER BY substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||substr(end_date,1,2) ASC LIMIT 2`
-      );
-      console.log('YOGINI CHECK:', JSON.stringify(yoginiG));
-      const charaG = safeQuery(
-        `SELECT period_name, start_date, end_date FROM dashas WHERE system='Chara (Jaimini)' AND substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||substr(end_date,1,2) >= date('now') ORDER BY substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||substr(end_date,1,2) ASC LIMIT 2`
-      );
+      const endsDDMMYY = (end: string | undefined): string => {
+        const s = String(end ?? '').trim();
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return `${s.slice(0, 6)}${s.slice(-2)}`;
+        if (/^\d{2}-\d{2}-\d{4}$/.test(s)) return `${s.slice(0, 2)}/${s.slice(3, 5)}/${s.slice(-2)}`;
+        return s;
+      };
+      const yoginiRows = safeQuery(`
+  SELECT period_name, end_date FROM dashas 
+  WHERE system='Yogini' 
+  AND substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||
+  substr(end_date,1,2) >= date('now') 
+  ORDER BY substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||
+  substr(end_date,1,2) ASC LIMIT 6
+`);
+      const mdY = yoginiRows[0];
+      const adY = yoginiRows[1];
+      const yoginiG =
+        mdY && adY
+          ? `MD: ${mdY[0]} (ends ${endsDDMMYY(mdY[1])}) | AD: ${adY[0]} (ends ${endsDDMMYY(adY[1])})`
+          : mdY
+            ? `MD: ${mdY[0]} (ends ${endsDDMMYY(mdY[1])})`
+            : '';
+      const charaRows = safeQuery(`
+  SELECT period_name, start_date, end_date FROM dashas 
+  WHERE system='Chara (Jaimini)' 
+  AND substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||
+  substr(end_date,1,2) >= date('now') 
+  ORDER BY substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||
+  substr(end_date,1,2) ASC LIMIT 6
+`);
+      const mdC = charaRows[0];
+      const adC = charaRows[1];
+      const charaG =
+        mdC && adC
+          ? `MD: ${mdC[0]} (ends ${endsDDMMYY(mdC[2])}) | AD: ${adC[0]} (ends ${endsDDMMYY(adC[2])})`
+          : mdC
+            ? `MD: ${mdC[0]} (ends ${endsDDMMYY(mdC[2])})`
+            : '';
       const transitsG = safeQuery(`SELECT planet, sign, degree, retro FROM current_transits`);
       const savAll = safeQuery(`SELECT house_number, points FROM ashtakvarga_summary`);
       extra = `\nTOPIC:GENERAL_DEEP\nALL_PLANETS_FULL:${JSON.stringify(allPlanets)}\nD9_NAVAMSHA:${JSON.stringify(d9g)}\nD10_DASAMSHA:${JSON.stringify(d10g)}\nD60_SHASTIAMSHA:${JSON.stringify(d60g)}\nKP_LAGNA:${JSON.stringify(kp1)}\nKP_PLANET_SIGNIFICATORS:${JSON.stringify(kpSig)}\nKP_HOUSE_PLANETS:${JSON.stringify(kpHouseSig)}\nSPECIAL_POINTS:${JSON.stringify(sp)}\nELEMENTAL_BALANCE:${JSON.stringify(elem)}\nCHALIT_SHIFTS:${JSON.stringify(chalitShifts)}\nYOGINI_CURRENT:${JSON.stringify(yoginiG)}\nCHARA_CURRENT:${JSON.stringify(charaG)}\nCURRENT_TRANSITS:${JSON.stringify(transitsG)}\nSAV_ALL_HOUSES:${JSON.stringify(savAll)}\n${dashaTimeline}${kpBlock}`;
