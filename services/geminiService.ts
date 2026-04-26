@@ -1112,7 +1112,7 @@ KP_HOUSE_SIGNIFICATORS(which planets rule each house via KP):${JSON.stringify(kp
 `;
 
   try {
-    if (q.match(/shaadi|marriage|partner|love|relationship|vivah|rishta|spouse|wife|husband|patni|pati|pyaar|breakup|divorce|talaaq|girlfriend|boyfriend/)) {
+    if (q.match(/shaadi|marriage|partner|love|relationship|connection|karmic|bond|toxic|vivah|rishta|spouse|wife|husband|patni|pati|pyaar|breakup|divorce|talaaq|girlfriend|boyfriend/)) {
       const d9   = safeQuery(`SELECT planet_name, D9_Navamsha_sign, D9_Navamsha_house, D9_Navamsha_status FROM planets`);
       const d7   = safeQuery(`SELECT planet_name, D7_Saptamsha_sign, D7_Saptamsha_house FROM planets`);
       const kp7  = safeQuery(`SELECT cusp, degree, sign, nak_lord, sub_lord, sub_sub_lord FROM kp_cusps WHERE cusp=7`);
