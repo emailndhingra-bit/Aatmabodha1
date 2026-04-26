@@ -1029,69 +1029,29 @@ const App: React.FC = () => {
     gender?: string;
   };
 
-  const handleGenerateChart = async (overrides?: GenerateChartOverrides) => {
-    const dobVal = overrides?.dob ?? dob;
-    const tobVal = overrides?.tob ?? tob;
-    const latVal = overrides?.lat ?? lat;
-    const lonVal = overrides?.lon ?? lon;
-    const tzVal = overrides?.timezone ?? timezone;
-    const nameVal = overrides?.userName ?? userName;
-    const pobVal = overrides?.placeOfBirth ?? pobQuery;
-    const genderVal = overrides?.gender ?? userGender;
+  type ChartPersistSnapshot = {
+    name: string;
+    gender: string;
+    dob: string;
+    tob: string;
+    city: string;
+    lat: string;
+    lon: string;
+    timezone: number;
+  };
 
-    if (!dobVal || !tobVal || !latVal || !lonVal) {
-        setError("Please fill in Date, Time, Latitude, and Longitude.");
-        return;
+  const finalizeChartFromEnrichedParsed = async (
+    parsed: any,
+    opts: {
+      dobVal: string;
+      tobVal: string;
+      nameVal: string;
+      genderVal: string;
+      pobVal: string;
+      persistSnapshot?: ChartPersistSnapshot;
     }
-    setAnalyzing(true);
-    setError(null);
-
-    try {
-        writeOracleUserContext({
-          setupDone: true,
-          preferredLanguage: oraclePreferredLang,
-          presentCity: presentCityText.trim(),
-          whySeeking: whyHereText,
-          focusAreas,
-          astroLevel,
-        });
-        localStorage.setItem('vedicLanguage', oraclePreferredLang);
-
-        const { date_of_birth, time_of_birth } = convertToISTForAPI(dobVal, tobVal, tzVal);
-        const payload = {
-            date_of_birth,
-            time_of_birth,
-            latitude: parseFloat(latVal),
-            longitude: parseFloat(lonVal),
-            timezone: tzVal
-        };
-        const apiBaseUrl = (import.meta as any).env.VITE_API_URL || "";
-        let parsed: any = {};
-        
-       
-        // --- API FETCH SECTION ---
-        try {
-            // We use the 'VITE_' prefix so the frontend can read the Render variable
-            const yourVariable = (import.meta as any).env.VITE_ANY_VARIABLE_NAME;            
-            const res = await fetch(`${apiBaseUrl}/api/chart`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!res.ok) {
-                throw new Error("API returned an error.");
-            }
-            
-            parsed = await res.json();
-            // Correcting data based on your specific location/timezone logic
-            parsed = enrichRawData(parsed, tzVal, lonVal);
-            
-        } catch (fetchErr: any) {
-            console.error("API Fetch Error:", fetchErr);
-            throw new Error("Failed to fetch chart data from the API. Please try again later.");
-        }
-        // --- END API FETCH SECTION ---
+  ) => {
+    const { dobVal, tobVal, nameVal, genderVal, pobVal, persistSnapshot } = opts;
 
         // This part organizes the data for your UI components
         const dCharts = Object.keys(parsed).reduce((acc: any, key) => {
@@ -1161,6 +1121,73 @@ const App: React.FC = () => {
             setAnalyzing(false);
             return null;
         }
+        return await finalizeData(result, persistSnapshot);
+  };
+
+  const handleGenerateChart = async (overrides?: GenerateChartOverrides) => {
+    const dobVal = overrides?.dob ?? dob;
+    const tobVal = overrides?.tob ?? tob;
+    const latVal = overrides?.lat ?? lat;
+    const lonVal = overrides?.lon ?? lon;
+    const tzVal = overrides?.timezone ?? timezone;
+    const nameVal = overrides?.userName ?? userName;
+    const pobVal = overrides?.placeOfBirth ?? pobQuery;
+    const genderVal = overrides?.gender ?? userGender;
+
+    if (!dobVal || !tobVal || !latVal || !lonVal) {
+        setError("Please fill in Date, Time, Latitude, and Longitude.");
+        return;
+    }
+    setAnalyzing(true);
+    setError(null);
+
+    try {
+        writeOracleUserContext({
+          setupDone: true,
+          preferredLanguage: oraclePreferredLang,
+          presentCity: presentCityText.trim(),
+          whySeeking: whyHereText,
+          focusAreas,
+          astroLevel,
+        });
+        localStorage.setItem('vedicLanguage', oraclePreferredLang);
+
+        const { date_of_birth, time_of_birth } = convertToISTForAPI(dobVal, tobVal, tzVal);
+        const payload = {
+            date_of_birth,
+            time_of_birth,
+            latitude: parseFloat(latVal),
+            longitude: parseFloat(lonVal),
+            timezone: tzVal
+        };
+        const apiBaseUrl = (import.meta as any).env.VITE_API_URL || "";
+        let parsed: any = {};
+        
+       
+        // --- API FETCH SECTION ---
+        try {
+            // We use the 'VITE_' prefix so the frontend can read the Render variable
+            const yourVariable = (import.meta as any).env.VITE_ANY_VARIABLE_NAME;            
+            const res = await fetch(`${apiBaseUrl}/api/chart`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                throw new Error("API returned an error.");
+            }
+            
+            parsed = await res.json();
+            // Correcting data based on your specific location/timezone logic
+            parsed = enrichRawData(parsed, tzVal, lonVal);
+            
+        } catch (fetchErr: any) {
+            console.error("API Fetch Error:", fetchErr);
+            throw new Error("Failed to fetch chart data from the API. Please try again later.");
+        }
+        // --- END API FETCH SECTION ---
+
         const persistSnapshot = overrides
           ? {
               name: nameVal || 'My Profile',
@@ -1173,7 +1200,14 @@ const App: React.FC = () => {
               timezone: tzVal,
             }
           : undefined;
-        return await finalizeData(result, persistSnapshot);
+        return await finalizeChartFromEnrichedParsed(parsed, {
+          dobVal,
+          tobVal,
+          nameVal,
+          genderVal,
+          pobVal,
+          persistSnapshot,
+        });
 
     } catch (err: any) {
         console.error(err);
@@ -1182,6 +1216,79 @@ const App: React.FC = () => {
     }
     return null;
 };
+
+  const handleRefreshChart = async () => {
+    const dobVal = dob;
+    const tobVal = tob;
+    const latVal = lat;
+    const lonVal = lon;
+    const tzVal = timezone;
+    const nameVal = userName;
+    const pobVal = pobQuery;
+    const genderVal = userGender;
+
+    if (!dobVal || !tobVal || !latVal || !lonVal) {
+        setError("Please fill in Date, Time, Latitude, and Longitude.");
+        return;
+    }
+    setAnalyzing(true);
+    setError(null);
+
+    try {
+        writeOracleUserContext({
+          setupDone: true,
+          preferredLanguage: oraclePreferredLang,
+          presentCity: presentCityText.trim(),
+          whySeeking: whyHereText,
+          focusAreas,
+          astroLevel,
+        });
+        localStorage.setItem('vedicLanguage', oraclePreferredLang);
+
+        const { date_of_birth, time_of_birth } = convertToISTForAPI(dobVal, tobVal, tzVal);
+        const payload = {
+            date_of_birth,
+            time_of_birth,
+            latitude: parseFloat(latVal),
+            longitude: parseFloat(lonVal),
+        };
+        const apiBaseUrl = (import.meta as any).env.VITE_API_URL || "";
+        let parsed: any = {};
+
+        try {
+            const res = await fetch(`${apiBaseUrl}/api/chart/refresh`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                throw new Error("API returned an error.");
+            }
+
+            parsed = await res.json();
+            parsed = enrichRawData(parsed, tzVal, lonVal);
+        } catch (fetchErr: any) {
+            console.error("API Fetch Error:", fetchErr);
+            throw new Error("Failed to fetch chart data from the API. Please try again later.");
+        }
+
+        return await finalizeChartFromEnrichedParsed(parsed, {
+          dobVal,
+          tobVal,
+          nameVal,
+          genderVal,
+          pobVal,
+          persistSnapshot: undefined,
+        });
+
+    } catch (err: any) {
+        console.error(err);
+        setError(err.message || "Failed to refresh chart from API.");
+        setAnalyzing(false);
+    }
+    return null;
+  };
 
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1622,7 +1729,7 @@ const App: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => void handleGenerateChart()}
+                      onClick={() => void handleRefreshChart()}
                       disabled={analyzing}
                       className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-bold transition-all ${analyzing ? 'opacity-60 cursor-not-allowed' : ''} bg-[#1a1638] text-slate-400 hover:text-white border border-indigo-500/30`}
                       title="Reload chart from server"
