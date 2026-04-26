@@ -1046,6 +1046,14 @@ export const getExtraContext = (db: any, question: string): string => {
     } catch(e) { return []; }
   };
 
+  // Age gate — prepended to extra context for every topic branch
+  const dobRows = safeQuery(`SELECT value FROM basic_details WHERE key LIKE '%birth%' OR key LIKE '%dob%' OR key LIKE '%date%' LIMIT 1`);
+  const dobStr = dobRows?.[0]?.[0] || '';
+  const birthYear = dobStr ? parseInt(dobStr.toString().slice(-4), 10) : 0;
+  const currentAge = birthYear ? new Date().getFullYear() - birthYear : 99;
+  const isMinor = currentAge < 18;
+  const agePrefix = `\nUSER_AGE: ${currentAge}\nIS_MINOR: ${isMinor}\n`;
+
   const charaAll = safeQuery(`
     SELECT period_name, start_date, end_date 
     FROM dashas 
