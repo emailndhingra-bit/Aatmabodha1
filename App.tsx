@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Upload, Download, Loader2, Sparkles, Moon, Table as TableIcon, LayoutGrid, Star, Database, Eye, MessageSquare, BarChart3, Diamond, RefreshCw, Scroll, Camera, UserCircle, Compass, Clock, CheckCircle, AlertTriangle, Play, Hand, Calendar, Book, History, X, Globe, Languages, Mic, ArrowRight, HelpCircle, Crown, Shield } from 'lucide-react';
+import { Upload, Download, Loader2, Sparkles, Moon, Table as TableIcon, LayoutGrid, Star, Database, Eye, MessageSquare, BarChart3, Diamond, RefreshCw, RotateCw, Scroll, Camera, UserCircle, Compass, Clock, CheckCircle, AlertTriangle, Play, Hand, Calendar, Book, History, X, Globe, Languages, Mic, ArrowRight, HelpCircle, Crown, Shield } from 'lucide-react';
 import { processAstrologyJson, identifyMissingData, enrichData, calculateAccurateTransits, getSignNum, getSignName, PLANET_LORDS } from './services/jsonMapper';
 import { initDatabase } from './services/db';
 import {
@@ -1619,6 +1619,16 @@ const App: React.FC = () => {
                     <button onClick={() => setViewMode('dashboard')} className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'dashboard' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-[#1a1638] text-slate-400 hover:text-white border border-indigo-500/30'}`} title="Dashboard Charts">
                         <LayoutGrid className="w-4 h-4" />
                         <span className="hidden md:inline">{cultureMode === 'JP' ? "チャート" : cultureMode === 'HI' ? "चार्ट" : "Charts"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleGenerateChart()}
+                      disabled={analyzing}
+                      className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-bold transition-all ${analyzing ? 'opacity-60 cursor-not-allowed' : ''} bg-[#1a1638] text-slate-400 hover:text-white border border-indigo-500/30`}
+                      title="Reload chart from server"
+                    >
+                      <RotateCw className={`w-4 h-4 shrink-0 ${analyzing ? 'animate-spin' : ''}`} />
+                      <span className="hidden md:inline">Refresh Chart</span>
                     </button>
                     <button
                       type="button"
