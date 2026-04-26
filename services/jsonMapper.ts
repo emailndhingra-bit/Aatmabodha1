@@ -652,8 +652,24 @@ const calculateYogasAndNBRY = (chartPlanets: any[], ascSignNum: number): Interna
       }
   });
 
-  // Calculate NBRY
+  const normalizeApiNbry = (v: unknown): "Yes" | "No" | undefined => {
+    if (v === undefined || v === null || v === "") return undefined;
+    const s = String(v).trim().toLowerCase();
+    if (s === "yes") return "Yes";
+    if (s === "no") return "No";
+    return undefined;
+  };
+
+  // Calculate NBRY — preserve backend nbry when API sends Yes/No (do not overwrite with client "-")
   planets.forEach((p) => {
+    const fromApi = normalizeApiNbry(p.nbry);
+    if (fromApi) {
+      p.nbry = fromApi;
+      if (fromApi === "Yes") {
+        p.yogas.push("Neecha Bhanga Raja Yoga");
+      }
+      return;
+    }
     if (p.status === "Debilitated") {
       let cancelled = false;
       const dispositor = getP(PLANET_LORDS[getSignName(p.rashi)]);
