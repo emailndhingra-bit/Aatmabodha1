@@ -12,6 +12,37 @@ export class ChartService {
     private readonly chartReqRepo: Repository<ChartRequestEntity>,
   ) {}
 
+  private chartApiUrl(): string {
+    const baseUrl =
+      process.env.CHART_API_URL ?? 'https://flask-creator-nitingauri2008.replit.app';
+    return `${baseUrl.replace(/\/$/, '')}/api/chart`;
+  }
+
+  private chartTimeoutMs(options?: { timeoutMs?: number }): number {
+    return (
+      options?.timeoutMs ??
+      (process.env.CHART_API_TIMEOUT_MS ? Number(process.env.CHART_API_TIMEOUT_MS) : 60_000)
+    );
+  }
+
+  private async postChartToReplit(
+    body: CreateChartDto,
+    options?: { timeoutMs?: number },
+  ) {
+    return axios.post(this.chartApiUrl(), body, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: this.chartTimeoutMs(options),
+    });
+  }
+
+  async fetchChartFresh(
+    body: CreateChartDto,
+    options?: { timeoutMs?: number },
+  ) {
+    const res = await this.postChartToReplit(body, options);
+    return res.data;
+  }
+
   async createChart(
     body: CreateChartDto,
     options?: { timeoutMs?: number },
@@ -24,16 +55,7 @@ export class ChartService {
     await this.chartReqRepo.save(rec);
 
     try {
-      const baseUrl =
-        process.env.CHART_API_URL ?? 'https://flask-creator-nitingauri2008.replit.app';
-        const url = `${baseUrl.replace(/\/$/, '')}/api/chart`;        
-      const timeoutMs =
-        options?.timeoutMs ??
-        (process.env.CHART_API_TIMEOUT_MS ? Number(process.env.CHART_API_TIMEOUT_MS) : 60_000);
-      const res = await axios.post(url, body, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: timeoutMs,
-      });
+      const res = await this.postChartToReplit(body, options);
 
       rec.responseBody = res.data;
       await this.chartReqRepo.save(rec);

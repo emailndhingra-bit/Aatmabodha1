@@ -10,5 +10,10 @@ export class ChartController {
   async createChart(@Body() body: CreateChartDto) {
     return await this.chartService.createChart(body);
   }
+
+  @Post('refresh')
+  async refreshChart(@Body() body: CreateChartDto) {
+    return await this.chartService.fetchChartFresh(body);
+  }
 }
 
