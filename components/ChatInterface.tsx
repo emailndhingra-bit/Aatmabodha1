@@ -441,24 +441,32 @@ const ChatInterface: React.FC<Props> = ({
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('auth_user');
-      if (!raw) return;
-      const authUser = JSON.parse(raw) as {
-        current_quota?: number;
-        questionsUsed?: number;
-      };
-      const current_quota =
-        authUser.current_quota !== undefined && authUser.current_quota !== null
-          ? Number(authUser.current_quota)
-          : 60;
-      const questionsUsed = Number(authUser.questionsUsed) || 0;
-      if (current_quota === 0) {
-        setQuotaRemaining('Unlimited');
-      } else {
-        setQuotaRemaining(Math.max(0, current_quota - questionsUsed));
+      const userStr = localStorage.getItem('auth_user');
+      if (userStr) {
+        const u = JSON.parse(userStr);
+
+        // Denominator: Check current_quota, fallback to 60
+        const cap =
+          u.current_quota !== undefined && u.current_quota !== null
+            ? Number(u.current_quota)
+            : 60;
+
+        // Numerator: Check questionsUsed, fallback to 0
+        const used =
+          u.questionsUsed !== undefined && u.questionsUsed !== null
+            ? Number(u.questionsUsed)
+            : 0;
+
+        if (cap === 0) {
+          setQuotaRemaining('Unlimited');
+        } else {
+          // Exactly: Denominator - Numerator
+          const left = Math.max(0, cap - used);
+          setQuotaRemaining(left);
+        }
       }
-    } catch {
-      /* ignore */
+    } catch (e) {
+      console.error('Error parsing quota:', e);
     }
   }, []);
 
