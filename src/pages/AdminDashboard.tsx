@@ -1983,7 +1983,8 @@ export default function AdminDashboard() {
                       const cap = typeof u.current_quota === 'number' ? u.current_quota : 60;
                       const used = u.questionsUsed ?? 0;
                       const unlimited = cap === 0;
-                      const label = unlimited ? `${used}/∞` : `${used}/${cap}`;
+                      const left = Math.max(0, cap - used);
+                      const label = unlimited ? 'Unlimited ∞' : `${left} Left (of ${cap})`;
                       const warn = !unlimited && cap > 0 && used / cap > 0.8;
                       return (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
