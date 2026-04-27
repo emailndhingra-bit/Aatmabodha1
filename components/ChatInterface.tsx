@@ -795,7 +795,7 @@ const ChatInterface: React.FC<Props> = ({
     try {
       const uc = readOracleUserContextForm();
       if (uc.preferredLanguage) {
-        steeringInstructions += ` USER_LANGUAGE: ${uc.preferredLanguage}. USER_PREFERRED_LANGUAGE: ${uc.preferredLanguage}. Match tone and vocabulary to this choice.`;
+        steeringInstructions += ` <LANGUAGE_SACROSANCT>: User selected [[ ${uc.preferredLanguage} ]]. This is STRICT. If Hinglish: Use purely Roman (a-z) script, casual WhatsApp tone. If Hindi/Marathi/Gujarati/etc: Use purely Native script, ZERO English words. NEVER mix scripts. </LANGUAGE_SACROSANCT> `;
       }
       if (uc.presentCity?.trim()) {
         steeringInstructions += ` USER_CURRENT_LOCATION: ${uc.presentCity.trim()}. USER_LOCATION (present city): ${uc.presentCity.trim()}.`;
@@ -947,7 +947,7 @@ const ChatInterface: React.FC<Props> = ({
 
     const instructionBlock = steeringInstructions ? `[SYSTEM: ${steeringInstructions}]` : "";
 
-    const finalPromptText = `${finalContextBlock}${textToSend}\n\n${instructionBlock}`;
+    const finalPromptText = `${finalContextBlock}\n[USER EXACT QUESTION]: ${textToSend}\n\n${instructionBlock}\n(CRITICAL SYSTEM OVERRIDE: Answer THIS exact question first with a clear YES/NO/WHEN and % probability. Do NOT drift into general philosophy until the precise question is directly answered.)`;
     // Add text prompt last
     messagePayload.push({ text: finalPromptText });
 
