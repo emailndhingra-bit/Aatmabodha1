@@ -370,7 +370,7 @@ const ChatInterface: React.FC<Props> = ({
   const [qaPairs, setQaPairs] = useState<QAPair[]>([]);
   const [selectedQaIds, setSelectedQaIds] = useState<number[]>([]);
   const [pendingQuestions, setPendingQuestions] = useState<{ id: number; text: string }[] | null>(null);
-  const [quotaRemaining, setQuotaRemaining] = useState<number | 'Unlimited'>(0);
+  const [quotaRemaining, setQuotaRemaining] = useState<number | 'Unlimited' | '...'>('...');
 
   // ── Memory & Token Management State ──────────────────
   const [sessionTokens, setSessionTokens] = useState(0);
@@ -440,34 +440,43 @@ const ChatInterface: React.FC<Props> = ({
   }, [messages, loading, visualizing]);
 
   useEffect(() => {
-    try {
-      const userStr = localStorage.getItem('auth_user');
-      if (userStr) {
-        const u = JSON.parse(userStr);
-
-        // Denominator: Check current_quota, fallback to 60
-        const cap =
-          u.current_quota !== undefined && u.current_quota !== null
-            ? Number(u.current_quota)
-            : 60;
-
-        // Numerator: Check questionsUsed, fallback to 0
-        const used =
-          u.questionsUsed !== undefined && u.questionsUsed !== null
-            ? Number(u.questionsUsed)
-            : 0;
-
-        if (cap === 0) {
-          setQuotaRemaining('Unlimited');
-        } else {
-          // Exactly: Denominator - Numerator
-          const left = Math.max(0, cap - used);
-          setQuotaRemaining(left);
+    const syncQuota = async () => {
+      try {
+        const raw = localStorage.getItem('auth_user');
+        if (raw) {
+          const u = JSON.parse(raw);
+          const cap = u.current_quota != null ? Number(u.current_quota) : 60;
+          const used = u.questionsUsed != null ? Number(u.questionsUsed) : 0;
+          setQuotaRemaining(cap === 0 ? 'Unlimited' : Math.max(0, cap - used));
         }
+
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://aatmabodha1-backend.onrender.com';
+
+        const res = await fetch(`${backendUrl}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.ok) {
+          const liveUser = await res.json();
+          if (raw) {
+            const updated = { ...JSON.parse(raw), ...liveUser };
+            localStorage.setItem('auth_user', JSON.stringify(updated));
+          }
+          const liveCap = liveUser.current_quota != null ? Number(liveUser.current_quota) : 60;
+          const liveUsed = liveUser.questionsUsed != null ? Number(liveUser.questionsUsed) : 0;
+          setQuotaRemaining(liveCap === 0 ? 'Unlimited' : Math.max(0, liveCap - liveUsed));
+        }
+      } catch (e) {
+        console.error('Live Quota Sync Error:', e);
       }
-    } catch (e) {
-      console.error('Error parsing quota:', e);
-    }
+    };
+
+    syncQuota();
+    window.addEventListener('focus', syncQuota);
+    return () => window.removeEventListener('focus', syncQuota);
   }, []);
 
   // Loading Message Rotation Logic (always start with 3-min wait copy, then cycle)
@@ -1457,7 +1466,9 @@ const ChatInterface: React.FC<Props> = ({
         >
           {quotaRemaining === 'Unlimited'
             ? '✨ Unlimited Quota'
-            : `✨ ${quotaRemaining} Questions Left`}
+            : quotaRemaining === '...'
+              ? '✨ …'
+              : `✨ ${quotaRemaining} Questions Left`}
         </div>
         <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
