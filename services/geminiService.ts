@@ -389,6 +389,142 @@ const processBase64Image = (base64String: string) => {
 };
 
 // ─────────────────────────────────────────────────────────────
+// Transformation layer: rashi_id → canonical Western sign names
+// (prevents the model from conflating house numbers with sign indices)
+// ─────────────────────────────────────────────────────────────
+const RASHI_NAMES = [
+    "Aries",
+    "Taurus",
+    "Gemini",
+    "Cancer",
+    "Leo",
+    "Virgo",
+    "Libra",
+    "Scorpio",
+    "Sagittarius",
+    "Capricorn",
+    "Aquarius",
+    "Pisces",
+] as const;
+
+/** Sidereal sign index 1–12 → explicit sign name (canonical for prompts). */
+export const mapRashi = (id: number): string => {
+    if (typeof id !== "number" || id < 1 || id > 12) return "";
+    return RASHI_NAMES[id - 1];
+};
+
+function signToRashiId(sign: string | null | undefined): number | null {
+    if (sign == null || String(sign).trim() === "") return null;
+    const n = String(sign).trim().toLowerCase();
+    const i = RASHI_NAMES.findIndex((s) => s.toLowerCase() === n);
+    return i >= 0 ? i + 1 : null;
+}
+
+/** One row per planet × divisional chart (D1, D4, D9, D10, D60) for SQL→prompt mapping. */
+export type DivisionalSqlInputRow = {
+    planet_name: string;
+    chart_type: string;
+    house_id: number | null;
+    rashi_id?: number | null;
+    sign?: string | null;
+    avastha?: string | null;
+};
+
+/** Structured placement after transformation (house = arena, sign = environment). */
+export type PromptChartPlacement = {
+    planet: string;
+    chart: string;
+    house_id: number | null;
+    sign_name: string;
+    avastha: string;
+};
+
+/**
+ * Maps raw SQL-style rows to prompt objects. Uses `mapRashi(rashi_id)` when valid;
+ * otherwise derives rashi from `sign` / `sign_name` text.
+ */
+export const buildPromptContext = (sqlRows: DivisionalSqlInputRow[]): PromptChartPlacement[] => {
+    return sqlRows.map((row) => {
+        let rid: number | null =
+            typeof row.rashi_id === "number" && row.rashi_id >= 1 && row.rashi_id <= 12 ? row.rashi_id : null;
+        if (rid == null) {
+            const fromSign = signToRashiId(row.sign ?? (row as { sign_name?: string }).sign_name);
+            rid = fromSign;
+        }
+        const sign_name =
+            rid != null && rid >= 1 && rid <= 12
+                ? mapRashi(rid)
+                : String(row.sign ?? (row as { sign_name?: string }).sign_name ?? "").trim() || "Unknown";
+        return {
+            planet: row.planet_name,
+            chart: row.chart_type,
+            house_id: row.house_id ?? null,
+            sign_name,
+            avastha: row.avastha != null && row.avastha !== "" ? String(row.avastha) : "",
+        };
+    });
+};
+
+/** Reads `planets` and emits one input row per (planet, D1|D4|D9|D10|D60). `avastha` is D1 balavastha (drives Mrita/Vriddha archetypes). */
+export function buildDivisionalSqlRowsFromPlanetsTable(db: any): DivisionalSqlInputRow[] {
+    if (!db) return [];
+    const out: DivisionalSqlInputRow[] = [];
+    try {
+        const res = db.exec(`
+            SELECT planet_name,
+                   D1_Rashi_house, D1_Rashi_sign, D1_Rashi_avastha,
+                   D4_Chaturthamsha_house, D4_Chaturthamsha_sign,
+                   D9_Navamsha_house, D9_Navamsha_sign,
+                   D10_Dasamsa_house, D10_Dasamsa_sign,
+                   D60_Shastiamsa_house, D60_Shastiamsa_sign
+            FROM planets
+            WHERE planet_name != 'Lagna'
+            ORDER BY planet_name
+        `);
+        const values = res[0]?.values as any[][] | undefined;
+        if (!values?.length) return out;
+
+        const charts: { chart: string; houseIdx: number; signIdx: number }[] = [
+            { chart: "D1", houseIdx: 1, signIdx: 2 },
+            { chart: "D4", houseIdx: 4, signIdx: 5 },
+            { chart: "D9", houseIdx: 6, signIdx: 7 },
+            { chart: "D10", houseIdx: 8, signIdx: 9 },
+            { chart: "D60", houseIdx: 10, signIdx: 11 },
+        ];
+
+        for (const row of values) {
+            const planet_name = String(row[0] ?? "");
+            const avastha = row[3] != null ? String(row[3]) : "";
+            for (const { chart, houseIdx, signIdx } of charts) {
+                const houseRaw = row[houseIdx];
+                const signRaw = row[signIdx];
+                const house_id =
+                    houseRaw === null || houseRaw === undefined || houseRaw === "" || houseRaw === "-"
+                        ? null
+                        : Number(houseRaw);
+                const sign = signRaw != null && signRaw !== "" && signRaw !== "-" ? String(signRaw) : "";
+                const rashi_id = signToRashiId(sign);
+                out.push({
+                    planet_name,
+                    chart_type: chart,
+                    house_id: Number.isFinite(house_id as number) ? (house_id as number) : null,
+                    rashi_id,
+                    sign: sign || undefined,
+                    avastha,
+                });
+            }
+        }
+    } catch (e) {
+        console.warn("[buildDivisionalSqlRowsFromPlanetsTable]", e);
+    }
+    return out;
+}
+
+export function getDivisionalPromptPlacements(db: any): PromptChartPlacement[] {
+    return buildPromptContext(buildDivisionalSqlRowsFromPlanetsTable(db));
+}
+
+// ─────────────────────────────────────────────────────────────
 // Generate context from SQLite DB for the AI
 // (unchanged — no API calls here)
 // ─────────────────────────────────────────────────────────────
@@ -443,6 +579,14 @@ export const generateVirtualFileContext = (db: any, includeKB: boolean = false):
                 }
                 context += "\n";
             });
+        }
+        const divTransform = getDivisionalPromptPlacements(db);
+        if (divTransform.length > 0) {
+            context += "\n[DIVISIONAL_TRANSFORMATION_LAYER (D1, D4, D9, D10, D60)]\n";
+            context +=
+                "Structured rows: { planet, chart, house_id, sign_name, avastha }. " +
+                "sign_name is from sidereal rashi (mapRashi); house_id is bhava arena — they are not the same index.\n";
+            context += `${JSON.stringify(divTransform, null, 2)}\n`;
         }
         const divChartRes = db.exec("SELECT chart_name, planet, sign, house, degree, status FROM divisional_charts ORDER BY chart_name, planet");
         if (divChartRes.length > 0 && divChartRes[0].values) {
@@ -617,6 +761,10 @@ Execute this internal process for EVERY query:
 
 This protocol **enhances ORACLE_RULES**. **Resolution:** **Storyteller Body + Mathematical REFERENCES** — same answer, two layers. Never sacrifice a technical fact for atmosphere: **the fact drives the narrative**, and the **REFERENCES** prove it regardless of question type.
 
+**SIGN vs HOUSE (TRANSFORMATION LAYER — MANDATORY):** In **[CHART_DATA]**, use **\`sign_name\`** (sidereal rashi name: Aries…Pisces) for **environmental strength** — sign dignity, elemental milieu, rashi temperament. Use **\`house_id\`** for the **functional arena** — bhava themes, life-area activation. **Never** assume house number equals sign index or that they are interchangeable; they are orthogonal axes. When both appear (e.g. **DIVISIONAL_TRANSFORM_JSON** or **[DIVISIONAL_TRANSFORMATION_LAYER]**), cite **sign** and **house** explicitly and separately in reasoning and REFERENCES.
+
+**AVASTHA ARCHETYPE LOCK (Mrita / Vriddha):** When payload **\`avastha\`** is **Mrita**, you **must** invoke the **Bheeshma** archetype in the Body (vow, withheld power, bed-of-arrows patience, **Uttarayana**-class timing before release). When **Vriddha**, you **must** invoke **Dronacharya** (master-teacher, discipline, weapon of knowledge held in reserve). Pair with chart/house/sign from the transformation layer; do not reduce these states to generic "tired" gloss alone.
+
 1. **LOGICAL PAYLOAD HARVESTING (Step 1 Scan):**
    - Treat every key-value pair in **[CHART_DATA]** as **sacred evidence**—no field is mere decoration without cause.
    - **Selective scan:** Mentally verify only variables **logically required** for the query's **domain** (e.g. **D10 / 10th SAV** for Career; **D9 / 7th lord** for Marriage; extend analogously for wealth, health, children, etc.).
@@ -654,7 +802,7 @@ STEP 1: THE INVISIBLE SCRATCHPAD (<thinking> block)
    - Every variable you mention or use in reasoning **MUST** appear in the \`─── REFERENCES ───\` block using **telegraphic** notation.
 
 2. **JARGON TRANSFORMATION (Prose vs. Proof):**
-   - **BODY (Prose):** Translate technical jargon into **lived experiences**; tie claims to **\`[X1]\`**, **\`[X2]\`**, … per **SQL-VAR §2**. Examples (non-exhaustive): **SAV < 22** → "Narrow gate" or "Resistance in the soil."; **BAV < 4** → "The courier is stuck" / SQL-VAR "Courier waiting for clearance"; **KP Veto** → "Final astronomical clearance is missing."; **Mrita/Vriddha** → **archetypes** (Bheeshma/Karna and peers per Inference Rotation below), not labels alone. Vargottama / Chalit / Willpower / Combust: use **SQL-VAR §2** archetype lexicon.
+   - **BODY (Prose):** Translate technical jargon into **lived experiences**; tie claims to **\`[X1]\`**, **\`[X2]\`**, … per **SQL-VAR §2**. Examples (non-exhaustive): **SAV < 22** → "Narrow gate" or "Resistance in the soil."; **BAV < 4** → "The courier is stuck" / SQL-VAR "Courier waiting for clearance"; **KP Veto** → "Final astronomical clearance is missing."; **Mrita** → **Bheeshma**; **Vriddha** → **Dronacharya** (per **AVASTHA ARCHETYPE LOCK**); other states → peers per Inference Rotation below—not labels alone. Vargottama / Chalit / Willpower / Combust: use **SQL-VAR §2** archetype lexicon.
    - **REFERENCES (Proof):** **SQL-VAR §3** density—**raw math + SQL-variable tags** (see **Deterministic Depth §4**), e.g.: \`[D4-L] D4 4th Lord Mars (Debilitated) | [SAV] 10H SAV: 33 | [S1] Sat·NBRY·Vargottama·H3→H4 (Chalit) | [H1] 7th SAV: 19·BAV: 3(✓-No) | [KP1] 10th CSL: Jup·SL: Mar\` (also: \`[KP-1] 10th CSL: Sat · Success Veto\`, \`[S1] Sun · Shadbala: 1.29 · High Command\`).
 
 3. **DIVISIONAL MANDATE (Expanded) + UNDERNEATH:**
@@ -676,7 +824,7 @@ STEP 1: THE INVISIBLE SCRATCHPAD (<thinking> block)
 1. **INFERENCE ROTATION & ARCHETYPES (Anti-Repetition):**
    - **STRICT BAN:** Do **not** explain technical states (**Mrita**, **Vriddha**, **Combust**, etc.) using the same "exhausted / tired / depleted" gloss **more than twice in the session** for that state. Track prior turns.
    - **Beyond two uses:** Omit the repeat, or pivot to a **different** technical angle (D60 dignity, Jaimini Karaka thread, SAV/BAV on another house, KP sub-lord nuance).
-   - **STORYTELLING (preferred over generic fatigue metaphors):** Map the planet's state to a **renowned mythological or cinematic archetype** so the user feels the *role*, not a repeated adjective. Examples (non-exhaustive): **Mrita Saturn in the 4th** → e.g. **Bheeshma** on the bed of arrows—immense power and wisdom, waiting for the right **Uttarayan** (timing) to speak/act; **NBRY Mars** → e.g. **Karna**—denied recognition early, emerging as a formidable warrior through struggle. Invent apt parallels when these do not fit; keep them **one tight beat**, not a lecture.
+   - **STORYTELLING (preferred over generic fatigue metaphors):** Map the planet's state to a **renowned mythological or cinematic archetype** so the user feels the *role*, not a repeated adjective. **Hard bind:** **Mrita** → **Bheeshma**; **Vriddha** → **Dronacharya** (per **AVASTHA ARCHETYPE LOCK** above). Other examples (non-exhaustive): **NBRY Mars** → e.g. **Karna**—denied recognition early, emerging as a formidable warrior through struggle. Invent apt parallels when these do not fit; keep them **one tight beat**, not a lecture.
 
 2. **CULTURAL & LINGUISTIC AUTHENTICITY:**
    - **SALUTATIONS:** In default register, the **first** spoken line obeys **Deterministic Depth §6** (**Om Tat Sat** / **Jai Shree Krishna** / **Ram Ram**). **JP** or other locked **LANGUAGE MODE**: use that mode's required greeting instead. Optionally weave **Ishta Devata** or chart-dominant devotion **after** the mandated opener when it fits.
@@ -1580,7 +1728,8 @@ export const generateCompactOneLiner = (db: any): string => {
             .map(([p, v]) => `${p}[${v.join(',')}]`)
             .join(' | ');
         console.log("TRANSITS CHECK:", transitsStr);
-        return `Today:[${today}]\nTRANSITS: ${transitsStr}\nTRANSIT_BAV(planet BAV in all houses, ✓=≥4 delivers): ${transitBavStr}\nLagna:[${lagna}] Rasi:[${rasi}] Nak:[${nak}] NakLord:[${nakLord}]\nGana:[${gana}] Nadi:[${nadi}] Paya:[${paya}] AK:${akStr}\nPLANETS: ${planetsStr}\nSHADBHALA: ${shadStr}\nAVASTHA: ${avasthaStr}\nDASHA: ${dashaStr}\nSAV: ${savStr}\nBAV(planet-house scores,≥4=delivers): ${bavStr}\nWILLPOWER_SCORE: ${wpStr}\n(Formula: 3rdHouseSAV×0.5 + 1.5×MarsShadbala.\n>18.50=strong free will overrides fate |\n12-18.50=mixed | <12=fate dominant)\nBHRIGU_BINDU: ${bbStr}\nISHTA_DEVATA: ${idStr}\nASPECTS(planet→houses_aspected): ${aspectStr}\nFP: Lucky#[${luckyNum}] Days:[${luckyDays}] Stone:[${luckyStone}] Metal:[${luckyMetal}]\nGH: BadDay:[${badDay}] BadNak:[${badNak}] BadPlanets:[${badPlanets}]\nCHALIT_SHIFTS:${chalitStr}\nNBRY_CANCELLED:${nbryStr}`;
+        const divJson = JSON.stringify(getDivisionalPromptPlacements(db));
+        return `Today:[${today}]\nTRANSITS: ${transitsStr}\nTRANSIT_BAV(planet BAV in all houses, ✓=≥4 delivers): ${transitBavStr}\nLagna:[${lagna}] Rasi:[${rasi}] Nak:[${nak}] NakLord:[${nakLord}]\nGana:[${gana}] Nadi:[${nadi}] Paya:[${paya}] AK:${akStr}\nPLANETS: ${planetsStr}\nSHADBHALA: ${shadStr}\nAVASTHA: ${avasthaStr}\nDASHA: ${dashaStr}\nSAV: ${savStr}\nBAV(planet-house scores,≥4=delivers): ${bavStr}\nWILLPOWER_SCORE: ${wpStr}\n(Formula: 3rdHouseSAV×0.5 + 1.5×MarsShadbala.\n>18.50=strong free will overrides fate |\n12-18.50=mixed | <12=fate dominant)\nBHRIGU_BINDU: ${bbStr}\nISHTA_DEVATA: ${idStr}\nASPECTS(planet→houses_aspected): ${aspectStr}\nFP: Lucky#[${luckyNum}] Days:[${luckyDays}] Stone:[${luckyStone}] Metal:[${luckyMetal}]\nGH: BadDay:[${badDay}] BadNak:[${badNak}] BadPlanets:[${badPlanets}]\nCHALIT_SHIFTS:${chalitStr}\nNBRY_CANCELLED:${nbryStr}\nDIVISIONAL_TRANSFORM_JSON:${divJson}`;
     } catch (e) {
         console.error("Error generating compact one liner", e);
         return "";
