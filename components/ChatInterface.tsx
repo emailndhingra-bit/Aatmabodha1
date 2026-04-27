@@ -370,6 +370,7 @@ const ChatInterface: React.FC<Props> = ({
   const [qaPairs, setQaPairs] = useState<QAPair[]>([]);
   const [selectedQaIds, setSelectedQaIds] = useState<number[]>([]);
   const [pendingQuestions, setPendingQuestions] = useState<{ id: number; text: string }[] | null>(null);
+  const [quotaRemaining, setQuotaRemaining] = useState<number | 'Unlimited'>(0);
 
   // ── Memory & Token Management State ──────────────────
   const [sessionTokens, setSessionTokens] = useState(0);
@@ -437,6 +438,29 @@ const ChatInterface: React.FC<Props> = ({
   useEffect(() => {
     scrollToBottom();
   }, [messages, loading, visualizing]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('auth_user');
+      if (!raw) return;
+      const authUser = JSON.parse(raw) as {
+        current_quota?: number;
+        questionsUsed?: number;
+      };
+      const current_quota =
+        authUser.current_quota !== undefined && authUser.current_quota !== null
+          ? Number(authUser.current_quota)
+          : 60;
+      const questionsUsed = Number(authUser.questionsUsed) || 0;
+      if (current_quota === 0) {
+        setQuotaRemaining('Unlimited');
+      } else {
+        setQuotaRemaining(Math.max(0, current_quota - questionsUsed));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   // Loading Message Rotation Logic (always start with 3-min wait copy, then cycle)
   useEffect(() => {
@@ -1012,6 +1036,26 @@ const ChatInterface: React.FC<Props> = ({
       if (parsedQuestions) {
         setPendingQuestions(parsedQuestions);
       }
+
+      if (!result.error) {
+        setQuotaRemaining((prev) =>
+          typeof prev === 'number' && prev > 0 ? prev - 1 : prev
+        );
+        try {
+          const raw = localStorage.getItem('auth_user');
+          if (raw) {
+            const authUser = JSON.parse(raw) as Record<string, unknown> & {
+              questionsUsed?: number;
+            };
+            const qUsed = Number(authUser.questionsUsed) || 0;
+            authUser.questionsUsed = qUsed + 1;
+            localStorage.setItem('auth_user', JSON.stringify(authUser));
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
       setLoading(false); 
       
       if (visualizeMatch && shouldTriggerImage) {
@@ -1387,7 +1431,27 @@ const ChatInterface: React.FC<Props> = ({
       </div>
 
       {/* Header */}
-      <div className="relative z-20 bg-[#120f26] border-b border-amber-900/20 p-4 flex items-center justify-between shadow-lg gap-3">
+      <div className="relative z-20 bg-[#120f26] border-b border-amber-900/20 p-4 shadow-lg flex flex-col gap-0">
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            background: 'rgba(201,169,110,0.15)',
+            border: '1px solid rgba(201,169,110,0.4)',
+            color: '#c9a96e',
+            padding: '4px 12px',
+            borderRadius: '20px',
+            fontSize: '12px',
+            fontWeight: 700,
+            letterSpacing: '0.5px',
+            marginBottom: '12px',
+          }}
+        >
+          {quotaRemaining === 'Unlimited'
+            ? '✨ Unlimited Quota'
+            : `✨ ${quotaRemaining} Questions Left`}
+        </div>
+        <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
             <div className="relative shrink-0">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-900 to-slate-900 border border-amber-500/30 flex items-center justify-center shadow-[0_0_15px_rgba(245,158,11,0.2)]">
@@ -1416,6 +1480,7 @@ const ChatInterface: React.FC<Props> = ({
             Change
           </button>
         )}
+        </div>
       </div>
 
       {/* Settings Bar */}
