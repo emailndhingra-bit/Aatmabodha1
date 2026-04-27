@@ -140,7 +140,8 @@ function chartApiBase(): string {
   return (viteApi || viteBackend || 'https://aatmabodha1-backend.onrender.com').replace(/\/$/, '');
 }
 
-export async function fetchAnalysisForProfile(profile: ProfileChartInput): Promise<AnalysisResult> {
+/** Chart API JSON with the same enrichment applied as in `buildAnalysisResultFromChartJson` (before mapping to AnalysisResult). */
+export async function fetchRawChartJsonForProfile(profile: ProfileChartInput): Promise<any> {
   const dobVal = profile.dateOfBirth;
   const tobVal = profile.timeOfBirth;
   const latVal =
@@ -154,9 +155,6 @@ export async function fetchAnalysisForProfile(profile: ProfileChartInput): Promi
   const tzRaw =
     profile.timezone != null && profile.timezone !== '' ? parseFloat(String(profile.timezone)) : Number.NaN;
   const tzVal = Number.isFinite(tzRaw) ? tzRaw : 5.5;
-  const nameVal = profile.name || 'Profile';
-  const pobVal = profile.placeOfBirth || '';
-  const genderVal = profile.gender || 'Prefer not to say';
 
   if (!dobVal || !tobVal || !latVal || !lonVal) {
     throw new Error('Profile is missing date, time, or coordinates needed for chart API.');
@@ -177,7 +175,12 @@ export async function fetchAnalysisForProfile(profile: ProfileChartInput): Promi
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error('Chart API returned an error.');
-  let parsed: any = await res.json();
+  const parsed: any = await res.json();
+  return enrichRawData(parsed, tzVal, lonVal);
+}
+
+export async function fetchAnalysisForProfile(profile: ProfileChartInput): Promise<AnalysisResult> {
+  const parsed = await fetchRawChartJsonForProfile(profile);
   return buildAnalysisResultFromChartJson(parsed, profile);
 }
 
