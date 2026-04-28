@@ -5,6 +5,11 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { generateCosmicImage, generateCompactOneLiner, getExtraContext, getVedicChatHistoryStorageKey } from '../services/geminiService';
 import {
+  computeQuotaRemainingFromUser,
+  fetchAuthMeUser,
+  getQuestionsUsedCount,
+} from '../services/userQuota';
+import {
   getAstroLevelOracleHint,
   mergeOracleUserContext,
   readOracleUserContext,
@@ -370,7 +375,8 @@ const ChatInterface: React.FC<Props> = ({
   const [qaPairs, setQaPairs] = useState<QAPair[]>([]);
   const [selectedQaIds, setSelectedQaIds] = useState<number[]>([]);
   const [pendingQuestions, setPendingQuestions] = useState<{ id: number; text: string }[] | null>(null);
-  const [quotaRemaining, setQuotaRemaining] = useState<number | 'Unlimited' | '...'>('...');
+  /** `null` = loading; `none` = not signed in (no cached user). */
+  const [quotaRemaining, setQuotaRemaining] = useState<number | 'Unlimited' | 'none' | null>(null);
 
   // ── Memory & Token Management State ──────────────────
   const [sessionTokens, setSessionTokens] = useState(0);
@@ -439,45 +445,51 @@ const ChatInterface: React.FC<Props> = ({
     scrollToBottom();
   }, [messages, loading, visualizing]);
 
-  useEffect(() => {
-    const syncQuota = async () => {
+  const syncQuotaFromServer = useCallback(async () => {
+    try {
+      const raw = localStorage.getItem('auth_user');
+      let localUser: Record<string, unknown> | null = null;
+      if (raw) {
+        try {
+          localUser = JSON.parse(raw) as Record<string, unknown>;
+          setQuotaRemaining(computeQuotaRemainingFromUser(localUser));
+        } catch {
+          localUser = null;
+        }
+      }
+
+      const liveUser = await fetchAuthMeUser();
+      if (liveUser) {
+        const base = (localUser ?? {}) as Record<string, unknown>;
+        const updated = { ...base, ...liveUser } as Record<string, unknown>;
+        localStorage.setItem('auth_user', JSON.stringify(updated));
+        setQuotaRemaining(computeQuotaRemainingFromUser(updated));
+        return;
+      }
+
+      if (!raw) {
+        setQuotaRemaining('none');
+      }
+    } catch (e) {
+      console.error('Live Quota Sync Error:', e);
       try {
         const raw = localStorage.getItem('auth_user');
         if (raw) {
-          const u = JSON.parse(raw);
-          const cap = u.current_quota != null ? Number(u.current_quota) : 60;
-          const used = u.questionsUsed != null ? Number(u.questionsUsed) : 0;
-          setQuotaRemaining(cap === 0 ? 'Unlimited' : Math.max(0, cap - used));
+          setQuotaRemaining(computeQuotaRemainingFromUser(JSON.parse(raw) as Record<string, unknown>));
+        } else {
+          setQuotaRemaining('none');
         }
-
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
-        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://aatmabodha1-backend.onrender.com';
-
-        const res = await fetch(`${backendUrl}/api/auth/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (res.ok) {
-          const liveUser = await res.json();
-          if (raw) {
-            const updated = { ...JSON.parse(raw), ...liveUser };
-            localStorage.setItem('auth_user', JSON.stringify(updated));
-          }
-          const liveCap = liveUser.current_quota != null ? Number(liveUser.current_quota) : 60;
-          const liveUsed = liveUser.questionsUsed != null ? Number(liveUser.questionsUsed) : 0;
-          setQuotaRemaining(liveCap === 0 ? 'Unlimited' : Math.max(0, liveCap - liveUsed));
-        }
-      } catch (e) {
-        console.error('Live Quota Sync Error:', e);
+      } catch {
+        setQuotaRemaining('none');
       }
-    };
-
-    syncQuota();
-    window.addEventListener('focus', syncQuota);
-    return () => window.removeEventListener('focus', syncQuota);
+    }
   }, []);
+
+  useEffect(() => {
+    syncQuotaFromServer();
+    window.addEventListener('focus', syncQuotaFromServer);
+    return () => window.removeEventListener('focus', syncQuotaFromServer);
+  }, [syncQuotaFromServer]);
 
   // Loading Message Rotation Logic (always start with 3-min wait copy, then cycle)
   useEffect(() => {
@@ -1055,18 +1067,23 @@ const ChatInterface: React.FC<Props> = ({
       }
 
       if (!result.error) {
-        setQuotaRemaining((prev) =>
-          typeof prev === 'number' && prev > 0 ? prev - 1 : prev
-        );
         try {
-          const raw = localStorage.getItem('auth_user');
-          if (raw) {
-            const authUser = JSON.parse(raw) as Record<string, unknown> & {
-              questionsUsed?: number;
-            };
-            const qUsed = Number(authUser.questionsUsed) || 0;
-            authUser.questionsUsed = qUsed + 1;
-            localStorage.setItem('auth_user', JSON.stringify(authUser));
+          const live = await fetchAuthMeUser();
+          if (live) {
+            const raw = localStorage.getItem('auth_user');
+            const prev = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+            const updated = { ...prev, ...live } as Record<string, unknown>;
+            localStorage.setItem('auth_user', JSON.stringify(updated));
+            setQuotaRemaining(computeQuotaRemainingFromUser(updated));
+          } else {
+            const raw = localStorage.getItem('auth_user');
+            if (raw) {
+              const authUser = JSON.parse(raw) as Record<string, unknown>;
+              const qUsed = getQuestionsUsedCount(authUser);
+              authUser.questionsUsed = qUsed + 1;
+              localStorage.setItem('auth_user', JSON.stringify(authUser));
+              setQuotaRemaining(computeQuotaRemainingFromUser(authUser));
+            }
           }
         } catch {
           /* ignore */
@@ -1464,11 +1481,18 @@ const ChatInterface: React.FC<Props> = ({
             marginBottom: '12px',
           }}
         >
-          {quotaRemaining === 'Unlimited'
-            ? '✨ Unlimited Quota'
-            : quotaRemaining === '...'
-              ? '✨ …'
-              : `✨ ${quotaRemaining} Questions Left`}
+          {quotaRemaining === null ? (
+            <span className="inline-flex items-center gap-1.5 min-h-[1em]">
+              <span className="inline-block h-2 w-16 rounded-full bg-amber-400/25 animate-pulse" aria-hidden />
+              <span className="sr-only">Loading quota</span>
+            </span>
+          ) : quotaRemaining === 'none' ? (
+            '✨ Sign in to track quota'
+          ) : quotaRemaining === 'Unlimited' ? (
+            '✨ Unlimited Quota'
+          ) : (
+            `✨ ${quotaRemaining} Questions Left`
+          )}
         </div>
         <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
@@ -1485,8 +1509,8 @@ const ChatInterface: React.FC<Props> = ({
                         {cultureMode === 'JP' ? "神託モード" : cultureMode === 'HI' ? "ओरेकल मोड" : "Oracle Mode"}
                     </span>
                 </h2>
-                <p className="text-indigo-300/60 text-xs font-medium font-sans truncate">
-                    {language || (cultureMode === 'JP' ? "Japanese" : cultureMode === 'HI' ? "Hindi" : "Hinglish")} • Powered by Gemini 3.0 Pro
+                <p className="text-amber-50/60 text-xs font-medium font-serif truncate">
+                    {language || (cultureMode === 'JP' ? "Japanese" : cultureMode === 'HI' ? "Hindi" : "Hinglish")} • Ancient Logic. Modern Code.
                 </p>
             </div>
         </div>

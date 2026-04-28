@@ -1,6 +1,7 @@
 import { Gem, VisualAnalysis, PalmAnalysis, BookChapter, RectificationResult, AnalysisResult } from "../types";
 import { DEFAULT_RULES } from "./defaultRules";
 import { ORACLE_RULES } from "./oracleRules";
+import { computeQuotaRemainingFromUser } from "./userQuota";
 
 // ─────────────────────────────────────────────────────────────
 // BACKEND PROXY — All Gemini calls go through Flask on AWS.
@@ -99,16 +100,9 @@ function resolveMemoryUserIdFromStorage(): string {
     }
 }
 
-/** Mirrors backend `UsersService.getEffectiveQuota` for Oracle context (auth_user from /api/auth/me). */
-function getEffectiveQuotaFromAuthUser(u: { customQuota?: number | null } | null): number {
-    if (!u) return 0;
-    if (u.customQuota != null) return u.customQuota;
-    return 60;
-}
-
 /**
  * V5.9: remaining question count for [QUOTA_REMAINING].
- * Uses `questions_used` / `custom_quota` on the User row exposed via auth_user (no extra API).
+ * Uses `questionsUsed` / `customQuota` on the User row in `auth_user` (kept in sync with /api/auth/me).
  * `custom_quota === 0` means unlimited → large integer sentinel for the model slot.
  */
 function getUserQuotaRemainingFromAuth(): number {
@@ -116,11 +110,10 @@ function getUserQuotaRemainingFromAuth(): number {
         if (typeof localStorage === "undefined") return 0;
         const authRaw = localStorage.getItem("auth_user");
         if (!authRaw) return 0;
-        const u = JSON.parse(authRaw) as { questionsUsed?: number; customQuota?: number | null };
-        const cap = getEffectiveQuotaFromAuthUser(u);
-        if (cap === 0) return 999999;
-        const used = typeof u.questionsUsed === "number" ? u.questionsUsed : 0;
-        return Math.max(0, cap - used);
+        const u = JSON.parse(authRaw) as Record<string, unknown>;
+        const rem = computeQuotaRemainingFromUser(u);
+        if (rem === "Unlimited") return 999999;
+        return rem;
     } catch {
         return 0;
     }
