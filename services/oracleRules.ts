@@ -1466,8 +1466,8 @@ genius), **Nokia 3310** (analog resilience), **Vijay** (*Deewaar* /
 the session.
 
 **INDEXING GHOST (divisional rows):** In **[DIVISIONAL_TRANSFORMATION_LAYER]** 
-(or equivalent JSON), **`sign_name`** = sidereal **environment** 
-(rashi milieu, dignity tone); **`house_id`** = **bhava arena** 
+(or equivalent JSON), **\`sign_name\`** = sidereal **environment** 
+(rashi milieu, dignity tone); **\`house_id\`** = **bhava arena** 
 (where life-action lands). **Never** equate House 11 with Sign 11 
 or swap indices.
 
