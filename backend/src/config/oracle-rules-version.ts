@@ -4,4 +4,4 @@
  * Kept under backend/src so Nest `rootDir` stays `./src` and `nest build`
  * emits `dist/main.js` (Render runs `node dist/main.js`).
  */
-export const ORACLE_RULES_VERSION = 'V5.9.4';
+export const ORACLE_RULES_VERSION = 'V5.6.4.1';
