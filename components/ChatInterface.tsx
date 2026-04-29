@@ -969,6 +969,20 @@ const ChatInterface: React.FC<Props> = ({
     const instructionBlock = steeringInstructions ? `[SYSTEM: ${steeringInstructions}]` : "";
 
     const finalPromptText = `${finalContextBlock}\n[USER EXACT QUESTION]: ${textToSend}\n\n${instructionBlock}\n(CRITICAL SYSTEM OVERRIDE: Answer THIS exact question first with a clear YES/NO/WHEN and % probability. Do NOT drift into general philosophy until the precise question is directly answered.)`;
+
+    if (db && shouldInjectChart && chartOneLiner) {
+      const chartInner = `${chartOneLiner}${extraContext}`;
+      console.log("[OraclePayload] CHART_DATA inner (chars):", chartInner.length);
+      console.log("[OraclePayload] full user turn (chars):", finalPromptText.length);
+      const dashaLine = chartInner.match(/DASHA:[^\n]*/);
+      console.log("[OraclePayload] compact DASHA line:", dashaLine?.[0] ?? "(no DASHA: line)");
+      const vimIdx = chartInner.indexOf("[VIMSHOTTARI");
+      console.log(
+        "[OraclePayload] VIMSHOTTARI / timeline preview:",
+        vimIdx >= 0 ? `${chartInner.slice(vimIdx, vimIdx + 500)}...` : "(no [VIMSHOTTARI block — topic may omit full timeline)",
+      );
+    }
+
     // Add text prompt last
     messagePayload.push({ text: finalPromptText });
 

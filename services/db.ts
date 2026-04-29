@@ -775,6 +775,26 @@ export const initDatabase = async (data: AnalysisResult, lat?: number, lng?: num
     insertChara.free();
   }
 
+  // Process YD.txt Yogini Dasha if available
+  // AnalysisResult field name: data.yogini (per handoff doc)
+  // Format: [{mdLord, adLord, startDate, endDate}] — same as Chara
+  if ((data as any).yogini && Array.isArray((data as any).yogini)) {
+    const insertYogini = db.prepare(
+      "INSERT INTO dashas VALUES (?, ?, ?, ?, ?)"
+    );
+    (data as any).yogini.forEach((p: any) => {
+      const periodName = `${p.mdLord} AD:${p.adLord}`;
+      insertYogini.run([
+        'Yogini',
+        periodName,
+        safe(p.startDate),
+        safe(p.endDate),
+        0
+      ]);
+    });
+    insertYogini.free();
+  }
+
   // Shadbala
   const insertShadbala = db.prepare("INSERT INTO shadbala VALUES (?, ?, ?, ?)");
   data.shadbala.forEach((s: any) => {
