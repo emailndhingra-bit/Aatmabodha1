@@ -990,7 +990,13 @@ const ChatInterface: React.FC<Props> = ({
     if (shouldInjectChart) setLastInjectedTopic(currentTopic);
 
     // Trim history to last 6 exchanges (12 messages)
-    const { systemInstruction } = (await import('../services/geminiService')).getSystemInstruction(db, language, cultureMode);
+    const geminiMod = await import('../services/geminiService');
+    const { systemInstruction } = geminiMod.getSystemInstruction(
+      db,
+      language,
+      geminiMod.resolveOracleUserDisplayName(),
+      cultureMode,
+    );
 
     
     const sendWithRetry = async (retries = 3): Promise<any> => {

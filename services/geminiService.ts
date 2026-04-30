@@ -87,6 +87,39 @@ if (typeof window !== "undefined") {
     attachGeminiWindowApi();
 }
 
+/** Display name for oracle greetings / system prompt (auth_user → userContext → "Ji"). */
+const DEFAULT_ORACLE_USER_NAME = "Ji";
+
+export function resolveOracleUserDisplayName(): string {
+    try {
+        if (typeof localStorage === "undefined") return DEFAULT_ORACLE_USER_NAME;
+        const pick = (v: unknown): string | null => {
+            if (typeof v !== "string") return null;
+            const t = v.trim().replace(/\s+/g, " ");
+            return t.length > 0 && t.length <= 80 ? t : null;
+        };
+        const authRaw = localStorage.getItem("auth_user");
+        if (authRaw) {
+            const auth = JSON.parse(authRaw) as Record<string, unknown>;
+            for (const key of ["name", "displayName", "firstName", "username"] as const) {
+                const s = pick(auth[key]);
+                if (s) return s;
+            }
+        }
+        const ctxRaw = localStorage.getItem("userContext");
+        if (ctxRaw) {
+            const ctx = JSON.parse(ctxRaw) as Record<string, unknown>;
+            for (const key of ["profileName", "displayName", "name", "preferredName"] as const) {
+                const s = pick(ctx[key]);
+                if (s) return s;
+            }
+        }
+    } catch {
+        /* ignore */
+    }
+    return DEFAULT_ORACLE_USER_NAME;
+}
+
 function resolveMemoryUserIdFromStorage(): string {
     try {
         if (typeof localStorage === "undefined") return "guest";
@@ -724,7 +757,12 @@ ${ORACLE_RULES}
 `;
 };
 
-export const getSystemInstruction = (db: any, language: string, cultureMode: 'EN' | 'JP' | 'HI' = 'EN'): { systemInstruction: string, initialGreeting: string } => {
+export const getSystemInstruction = (
+    db: any,
+    language: string,
+    userName: string,
+    cultureMode: 'EN' | 'JP' | 'HI' = 'EN',
+): { systemInstruction: string; initialGreeting: string } => {
     const baseRules = generateGodModeRules();
 
     const systemInstruction = `
@@ -738,7 +776,7 @@ ${baseRules}
 - **DECIMAL LOCK:** Use exactly 2 decimal places for all numerical scores and ratios.
 
 ## RESPONSE_STRUCTURE (ORACLE FLOW)
-1. **The Hook:** Warm Empathy / Sanskrit Shloka paired with user name (ND).
+1. **The Hook:** Warm Empathy / Sanskrit Shloka paired with user name (${userName}).
 2. **The Analogy:** Core revelation through a fresh, non-repetitive spiritual or technical metaphor.
 3. **The Timing:** Three distinct probability windows (High/Mid/Low) with integrated dasha/transit logic.
 4. **The Remedy:** Practical action + Citation of source (BPHS, Gita, etc.).
@@ -747,7 +785,10 @@ ${baseRules}
 LANGUAGE MODE: ${language}.
 </HYPER_COGNITIVE_ENGINE>
     `;
-    return { systemInstruction, initialGreeting: "Om Tat Sat. Data calibrated. Ask boldly, ND." };
+    return {
+        systemInstruction,
+        initialGreeting: `Om Tat Sat. Data calibrated. Ask boldly, ${userName}.`,
+    };
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -758,7 +799,8 @@ export const createChatSession = async (db: any, language: string, cultureMode: 
     const context = generateCompactOneLiner(db);
     const natalFingerprint = await computeNatalContextFingerprint(db);
     setActiveOracleNatalFingerprint(natalFingerprint);
-    const { systemInstruction, initialGreeting } = getSystemInstruction(db, language, cultureMode);
+    const userName = resolveOracleUserDisplayName();
+    const { systemInstruction, initialGreeting } = getSystemInstruction(db, language, userName, cultureMode);
 
     // Load warm history from localStorage (scoped per chart fingerprint)
     const chatHistory: { role: 'user' | 'model'; text: string }[] = [];
