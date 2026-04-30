@@ -693,28 +693,6 @@ ${ORACLE_RULES}
 `;
 };
 
-export const generateHindiCulturalRules = (): string => {
-    return `
-${ORACLE_RULES}
-
-HINDI MODE: Respond entirely in Hindi/Hinglish. Use Sanskrit terms freely (Shani ki Sade Sati, Bhagya, Karm, Dosh, Upaya). Act as a trusted Indian Jyotishi — authoritative yet deeply compassionate.
-`;
-};
-
-export const generateDynamicCulturalRules = (language: string): string => {
-    return `
-${ORACLE_RULES}
-
-**CULTURAL TRANSLATION RULES (MANDATORY):**
-1. **Language:** You MUST respond entirely in ${language}.
-2. **Tone:** Adapt the tone to be culturally appropriate for a wise, empathetic elder or spiritual guide in the ${language} culture.
-3. **Concepts:** Translate Vedic Astrology concepts into terms that make sense in ${language}, while maintaining their original meaning.
-
-**SYSTEM BEHAVIOR:**
-Act as a wise, culturally attuned spiritual guide speaking ${language}.
-`;
-};
-
 export const getSystemInstruction = (db: any, language: string, cultureMode: 'EN' | 'JP' | 'HI' = 'EN'): { systemInstruction: string, initialGreeting: string } => {
     let baseRules = generateGodModeRules();
     let initialGreeting = "Context received. I will think wisely and revise all data 2-3 times before answering to ensure zero hallucinations.";
@@ -724,7 +702,7 @@ export const getSystemInstruction = (db: any, language: string, cultureMode: 'EN
         initialGreeting = "コンテキストを受信しました。幻覚（ハルシネーション）がないことを確認するため、回答する前にデータを2〜3回慎重に確認し、日本の文化的文脈に沿って応答します。";
     } else if (language === 'Hindi' || language === 'हिंदी') {
         baseRules = generateHindiCulturalRules();
-        initialGreeting = "कुंडली का विश्लेषण प्राप्त हुआ। मैं उत्तर देने से पहले सभी डेटा की 2-3 बार सावधानीपूर्वक जाँच करूँगा ताकि कोई त्रुटि न हो।";
+        initialGreeting = "कुंडली का विश्लेषण प्राप्त हुआ। मैं उत्तर देने से पहले सभी डेटा की 2-3 बार सावधानीपूर्वक जाँच करूँगा ताकि कोई त्रुटि न हो。";
     } else {
         baseRules = generateDynamicCulturalRules(language);
         initialGreeting = `[System] Context received. I am switching to ${language} mode. I will verify data and respond culturally appropriately.`;
