@@ -1,7 +1,7 @@
 import { BadGatewayException, BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Response } from 'express';
 import { finished } from 'node:stream/promises';
-import archiver from 'archiver';
+import * as archiver from 'archiver';
 import { ChartService } from '../chart/chart.service';
 import { ProfilesService } from '../profiles/profiles.service';
 import { UsersService } from '../users/users.service';
