@@ -1,3 +1,4 @@
+import type { Response } from 'express';
 import { ChartService } from '../chart/chart.service';
 import { ProfilesService } from '../profiles/profiles.service';
 import { UsersService } from '../users/users.service';
@@ -50,6 +51,7 @@ export declare class AdminService {
         createdAt: Date;
         updatedAt: Date;
     }>;
+    streamReplitExportZip(userId: string, profileId: string, res: Response): Promise<void>;
     oracleAudio(dto: AdminOracleAudioDto): Promise<{
         text: string;
         audioBase64: string;

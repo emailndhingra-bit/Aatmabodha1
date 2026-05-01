@@ -1019,6 +1019,7 @@ export default function AdminDashboard() {
 
   const [profileCounts, setProfileCounts] = useState<Record<string, number>>({});
   const [profileModal, setProfileModal] = useState<null | { user: any; loading: boolean; profiles: any[] }>(null);
+  const [replitExportProfileId, setReplitExportProfileId] = useState<string | null>(null);
   const [adminProfileUiTick, setAdminProfileUiTick] = useState(0);
   const [myProfiles, setMyProfiles] = useState<any[]>([]);
 
@@ -1628,6 +1629,54 @@ export default function AdminDashboard() {
         setProfileModal({ user, loading: false, profiles: Array.isArray(list) ? list : [] });
       } catch {
         setProfileModal({ user, loading: false, profiles: [] });
+      }
+    },
+    [token],
+  );
+
+  const downloadReplitProfileZip = useCallback(
+    async (userId: string, profileId: string) => {
+      if (!token) {
+        setMsg('Not signed in.');
+        setTimeout(() => setMsg(''), 3500);
+        return;
+      }
+      setReplitExportProfileId(profileId);
+      try {
+        const url = `${BACKEND}/api/admin/users/${encodeURIComponent(userId)}/profiles/${encodeURIComponent(profileId)}/export-replit`;
+        const r = await fetch(url, { method: 'GET', headers: { Authorization: `Bearer ${token}` } });
+        if (!r.ok) {
+          const errBody = await r.text();
+          let message = `Export failed (${r.status})`;
+          try {
+            const j = JSON.parse(errBody);
+            if (j?.message != null) {
+              message = Array.isArray(j.message) ? j.message.join('; ') : String(j.message);
+            }
+          } catch {
+            if (errBody?.trim()) message = errBody.trim().slice(0, 400);
+          }
+          setMsg(message);
+          setTimeout(() => setMsg(''), 6000);
+          return;
+        }
+        const blob = await r.blob();
+        const objUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = `profile_${profileId}_replit_export.zip`;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(objUrl);
+        setMsg('ZIP download started.');
+        setTimeout(() => setMsg(''), 2500);
+      } catch (e: any) {
+        setMsg(e?.message || 'Export failed — network error.');
+        setTimeout(() => setMsg(''), 5000);
+      } finally {
+        setReplitExportProfileId(null);
       }
     },
     [token],
@@ -4174,6 +4223,54 @@ export default function AdminDashboard() {
                             }}
                           >
                             Load in Oracle
+                          </button>
+                          <button
+                            type="button"
+                            disabled={replitExportProfileId === p.id}
+                            onClick={() => void downloadReplitProfileZip(profileModal.user.id, p.id)}
+                            style={{
+                              background: 'transparent',
+                              color: '#9ca3af',
+                              border: `1px solid ${BORDER}`,
+                              borderRadius: 6,
+                              padding: '6px 10px',
+                              cursor: replitExportProfileId === p.id ? 'not-allowed' : 'pointer',
+                              fontSize: 11,
+                              fontWeight: 600,
+                              opacity: replitExportProfileId === p.id ? 0.75 : 1,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                            }}
+                          >
+                            {replitExportProfileId === p.id ? (
+                              <>
+                                <svg width="14" height="14" viewBox="0 0 50 50" aria-hidden style={{ flexShrink: 0 }}>
+                                  <circle
+                                    cx="25"
+                                    cy="25"
+                                    r="20"
+                                    fill="none"
+                                    stroke={GOLD}
+                                    strokeWidth="5"
+                                    strokeDasharray="28 90"
+                                    strokeLinecap="round"
+                                  >
+                                    <animateTransform
+                                      attributeName="transform"
+                                      type="rotate"
+                                      from="0 25 25"
+                                      to="360 25 25"
+                                      dur="0.75s"
+                                      repeatCount="indefinite"
+                                    />
+                                  </circle>
+                                </svg>
+                                Preparing ZIP…
+                              </>
+                            ) : (
+                              'Download Raw Profile Data (ZIP)'
+                            )}
                           </button>
                         </div>
                       </td>

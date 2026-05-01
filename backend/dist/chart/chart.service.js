@@ -40,6 +40,15 @@ let ChartService = class ChartService {
         const res = await this.postChartToReplit(body, options);
         return res.data;
     }
+    async fetchReplitResponseAsText(body, options) {
+        const res = await axios_1.default.post(this.chartApiUrl(), body, {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: this.chartTimeoutMs(options),
+            responseType: 'text',
+            transformResponse: [(data) => data],
+        });
+        return typeof res.data === 'string' ? res.data : String(res.data ?? '');
+    }
     async createChart(body, options) {
         const rec = this.chartReqRepo.create({
             requestBody: body,

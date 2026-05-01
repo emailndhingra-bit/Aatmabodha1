@@ -33,6 +33,9 @@ let AdminController = class AdminController {
     async patchQuota(userId, body) {
         return this.adminService.setUserQuota(userId, body.quota);
     }
+    async exportReplit(userId, profileId, res) {
+        await this.adminService.streamReplitExportZip(userId, profileId, res);
+    }
     async oracleAudio(body) {
         return this.adminService.oracleAudio(body);
     }
@@ -60,6 +63,15 @@ __decorate([
     __metadata("design:paramtypes", [String, update_quota_dto_1.UpdateQuotaDto]),
     __metadata("design:returntype", Promise)
 ], AdminController.prototype, "patchQuota", null);
+__decorate([
+    (0, common_1.Get)('users/:userId/profiles/:profileId/export-replit'),
+    __param(0, (0, common_1.Param)('userId')),
+    __param(1, (0, common_1.Param)('profileId')),
+    __param(2, (0, common_1.Res)({ passthrough: false })),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", Promise)
+], AdminController.prototype, "exportReplit", null);
 __decorate([
     (0, common_1.Post)('oracle/audio'),
     __param(0, (0, common_1.Body)()),

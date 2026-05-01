@@ -10,6 +10,9 @@ export declare class ChartService {
     fetchChartFresh(body: CreateChartDto, options?: {
         timeoutMs?: number;
     }): Promise<any>;
+    fetchReplitResponseAsText(body: CreateChartDto, options?: {
+        timeoutMs?: number;
+    }): Promise<string>;
     createChart(body: CreateChartDto, options?: {
         timeoutMs?: number;
     }): Promise<any>;

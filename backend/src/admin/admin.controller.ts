@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../guards/admin.guard';
 import { AdminService } from './admin.service';
@@ -24,6 +25,15 @@ export class AdminController {
   @Patch('users/:userId/quota')
   async patchQuota(@Param('userId') userId: string, @Body() body: UpdateQuotaDto) {
     return this.adminService.setUserQuota(userId, body.quota);
+  }
+
+  @Get('users/:userId/profiles/:profileId/export-replit')
+  async exportReplit(
+    @Param('userId') userId: string,
+    @Param('profileId') profileId: string,
+    @Res({ passthrough: false }) res: Response,
+  ) {
+    await this.adminService.streamReplitExportZip(userId, profileId, res);
   }
 
   @Post('oracle/audio')

@@ -1,4 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import type { Response } from 'express';
+import { finished } from 'node:stream/promises';
+import archiver from 'archiver';
 import { ChartService } from '../chart/chart.service';
 import { ProfilesService } from '../profiles/profiles.service';
 import { UsersService } from '../users/users.service';
@@ -107,6 +110,51 @@ export class AdminService {
     const updated = await this.usersService.setCustomQuota(userId, quota);
     if (!updated) throw new NotFoundException('User not found');
     return this.toAdminUserRow(updated);
+  }
+
+  async streamReplitExportZip(userId: string, profileId: string, res: Response): Promise<void> {
+    const profile = await this.profilesService.getProfile(userId, profileId);
+    if (!profile) throw new NotFoundException('Profile not found');
+    const lat = profile.latitude != null ? Number(profile.latitude) : Number.NaN;
+    const lon = profile.longitude != null ? Number(profile.longitude) : Number.NaN;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      throw new BadRequestException('Profile is missing valid latitude/longitude for chart export');
+    }
+    const payload = chartPayloadFromProfileFields({
+      dateOfBirth: profile.dateOfBirth,
+      timeOfBirth: profile.timeOfBirth,
+      latitude: lat,
+      longitude: lon,
+      timezone: profile.timezone != null ? Number(profile.timezone) : 5.5,
+    });
+    let rawText: string;
+    try {
+      rawText = await this.chartService.fetchReplitResponseAsText(payload as any);
+    } catch (e: any) {
+      const fromAxios =
+        e?.response?.data != null
+          ? typeof e.response.data === 'string'
+            ? e.response.data
+            : JSON.stringify(e.response.data)
+          : null;
+      const detail = (fromAxios || e?.message || 'Replit chart API failed') as string;
+      throw new BadGatewayException(String(detail).slice(0, 2000));
+    }
+
+    const filename = `profile_${profileId}_replit_export.zip`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.pipe(res);
+    archive.append(rawText, { name: 'replit_raw_output.json' });
+    const exportTs = new Date().toISOString();
+    archive.append(
+      `userId: ${userId}\nprofileId: ${profileId}\nExport Timestamp: ${exportTs}\n`,
+      { name: 'export_meta.txt' },
+    );
+    archive.finalize();
+    await finished(archive);
   }
 
   async oracleAudio(dto: AdminOracleAudioDto) {

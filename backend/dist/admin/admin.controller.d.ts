@@ -1,3 +1,4 @@
+import type { Response } from 'express';
 import { AdminService } from './admin.service';
 import { AdminQuickChartDto } from './dto/admin-quick-chart.dto';
 import { AdminOracleAudioDto } from './dto/admin-oracle-audio.dto';
@@ -38,6 +39,7 @@ export declare class AdminController {
         createdAt: Date;
         updatedAt: Date;
     }>;
+    exportReplit(userId: string, profileId: string, res: Response): Promise<void>;
     oracleAudio(body: AdminOracleAudioDto): Promise<{
         text: string;
         audioBase64: string;

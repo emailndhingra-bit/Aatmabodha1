@@ -43,6 +43,20 @@ export class ChartService {
     return res.data;
   }
 
+  /** Raw HTTP body from Replit chart API (preserves exact JSON bytes when server returns JSON). */
+  async fetchReplitResponseAsText(
+    body: CreateChartDto,
+    options?: { timeoutMs?: number },
+  ): Promise<string> {
+    const res = await axios.post<string>(this.chartApiUrl(), body, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: this.chartTimeoutMs(options),
+      responseType: 'text',
+      transformResponse: [(data) => data],
+    });
+    return typeof res.data === 'string' ? res.data : String(res.data ?? '');
+  }
+
   async createChart(
     body: CreateChartDto,
     options?: { timeoutMs?: number },

@@ -11,6 +11,8 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminService = void 0;
 const common_1 = require("@nestjs/common");
+const promises_1 = require("node:stream/promises");
+const archiver_1 = require("archiver");
 const chart_service_1 = require("../chart/chart.service");
 const profiles_service_1 = require("../profiles/profiles.service");
 const users_service_1 = require("../users/users.service");
@@ -98,6 +100,46 @@ let AdminService = class AdminService {
         if (!updated)
             throw new common_1.NotFoundException('User not found');
         return this.toAdminUserRow(updated);
+    }
+    async streamReplitExportZip(userId, profileId, res) {
+        const profile = await this.profilesService.getProfile(userId, profileId);
+        if (!profile)
+            throw new common_1.NotFoundException('Profile not found');
+        const lat = profile.latitude != null ? Number(profile.latitude) : Number.NaN;
+        const lon = profile.longitude != null ? Number(profile.longitude) : Number.NaN;
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+            throw new common_1.BadRequestException('Profile is missing valid latitude/longitude for chart export');
+        }
+        const payload = (0, ist_chart_payload_util_1.chartPayloadFromProfileFields)({
+            dateOfBirth: profile.dateOfBirth,
+            timeOfBirth: profile.timeOfBirth,
+            latitude: lat,
+            longitude: lon,
+            timezone: profile.timezone != null ? Number(profile.timezone) : 5.5,
+        });
+        let rawText;
+        try {
+            rawText = await this.chartService.fetchReplitResponseAsText(payload);
+        }
+        catch (e) {
+            const fromAxios = e?.response?.data != null
+                ? typeof e.response.data === 'string'
+                    ? e.response.data
+                    : JSON.stringify(e.response.data)
+                : null;
+            const detail = (fromAxios || e?.message || 'Replit chart API failed');
+            throw new common_1.BadGatewayException(String(detail).slice(0, 2000));
+        }
+        const filename = `profile_${profileId}_replit_export.zip`;
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        const archive = (0, archiver_1.default)('zip', { zlib: { level: 9 } });
+        archive.pipe(res);
+        archive.append(rawText, { name: 'replit_raw_output.json' });
+        const exportTs = new Date().toISOString();
+        archive.append(`userId: ${userId}\nprofileId: ${profileId}\nExport Timestamp: ${exportTs}\n`, { name: 'export_meta.txt' });
+        archive.finalize();
+        await (0, promises_1.finished)(archive);
     }
     async oracleAudio(dto) {
         const profile = await this.profilesService.findById(dto.profileId);
