@@ -297,7 +297,7 @@ export const WEIGHTING_MATRIX: WeightRow[] = [
     CAREER:8, MARRIAGE:8, HEALTH:8, WEALTH:8, PROPERTY:8, CHILDREN:8,
     TRAVEL:8, SPIRITUAL:7, PERSONALITY:6, TIMING:10, COMPATIBILITY:7, REMEDY:7, COMPOSITE:7 },
   { id: 53, feature: "Past 3 completed MDs (validation)", layer: "DASHA",
-    sqlSource: "dashas WHERE end_date < NOW LIMIT 3 per system",
+    sqlSource: "dashas WHERE end_date < NOW LIMIT 6 per system",
     CAREER:7, MARRIAGE:7, HEALTH:7, WEALTH:7, PROPERTY:7, CHILDREN:7,
     TRAVEL:6, SPIRITUAL:7, PERSONALITY:7, TIMING:8, COMPATIBILITY:6, REMEDY:6, COMPOSITE:7 },
 
@@ -917,6 +917,13 @@ Then ONE line asking confirmation: "Inme se kaunsa match karta hai?" / "Which on
 For PAST events (married, bought car, joined first job): the 3 windows are HISTORICAL ranges — give 3 plausible past dates so seeker confirms which actually happened. Highest probability window first, lowest last.
 
 For FUTURE events (when will I marry, when will career shift): the 3 windows are NEAR / MEDIUM / FAR future. Give the chronologically nearest first regardless of probability, but lead the user toward the highest-probability one.
+
+CRITICAL SANITY GATE (BIOLOGICAL & LEGAL AGE):
+Astrology math is cyclical, but human life is linear. Before outputting any of the 3 windows, you MUST calculate the seeker's biological age during that window (Window Year - Birth Year). Filter or contextualize mathematically strong windows if they violate common sense:
+- MARRIAGE: Do not predict marriage windows before age 21. If a strong 7th house dasha hits at age 14, label it as "early relationship programming or hormonal shift", NOT marriage. Downgrade its probability for actual marriage to 0%.
+- CAREER/WEALTH: Do not predict professional salary/milestones before age 18. A 10th house dasha at age 12 is academic leadership or taking on family duties, not a career jump.
+- CHILDREN/PROPERTY: Apply standard adult life-stage logic.
+If the highest mathematical probability falls in an impossible age, DO NOT output it as a valid event window. Shift to the next chronologically logical window.
 
 PROBABILITY CALCULATION (use the matrix coverage formula in Layer 3 + this engine):
 
