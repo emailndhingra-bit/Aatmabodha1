@@ -11,6 +11,7 @@ const common_1 = require("@nestjs/common");
 const chart_module_1 = require("../chart/chart.module");
 const profiles_module_1 = require("../profiles/profiles.module");
 const users_module_1 = require("../users/users.module");
+const questions_module_1 = require("../questions/questions.module");
 const gemini_module_1 = require("../gemini/gemini.module");
 const sarvam_module_1 = require("../sarvam/sarvam.module");
 const admin_controller_1 = require("./admin.controller");
@@ -20,7 +21,7 @@ let AdminModule = class AdminModule {
 exports.AdminModule = AdminModule;
 exports.AdminModule = AdminModule = __decorate([
     (0, common_1.Module)({
-        imports: [chart_module_1.ChartModule, profiles_module_1.ProfilesModule, users_module_1.UsersModule, gemini_module_1.GeminiModule, sarvam_module_1.SarvamModule],
+        imports: [chart_module_1.ChartModule, profiles_module_1.ProfilesModule, users_module_1.UsersModule, questions_module_1.QuestionsModule, gemini_module_1.GeminiModule, sarvam_module_1.SarvamModule],
         controllers: [admin_controller_1.AdminController],
         providers: [admin_service_1.AdminService],
     })

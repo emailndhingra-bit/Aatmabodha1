@@ -366,11 +366,21 @@ let GeminiService = class GeminiService {
         const genTimeout = setTimeout(() => genController.abort(), GEMINI_GENERATE_TIMEOUT_MS);
         const t0 = Date.now();
         const diagUserQ = String(body.userQuestion ?? messageWithoutChart ?? '').slice(0, 100);
+        const chartBlockChars = chartBlock ? chartBlock.length : 0;
+        const chartDashaPreview = chartBlock && chartBlock.length > 0
+            ? (chartBlock.match(/DASHA:[^\n]*/)?.[0] ?? '').slice(0, 220)
+            : '';
+        const chartVimPreview = chartBlock && chartBlock.includes('[VIMSHOTTARI')
+            ? `${chartBlock.slice(chartBlock.indexOf('[VIMSHOTTARI'), chartBlock.indexOf('[VIMSHOTTARI') + 520)}...`
+            : '';
         console.log('[OracleDiag] about to call Gemini', {
             cacheHit: contextCacheHit,
             cacheId: cachedContentName,
             cachedLength: baseSi ? baseSi.length : 0,
             dynamicLength: JSON.stringify(contents).length,
+            chartBlockChars,
+            chartDashaPreview: chartDashaPreview || undefined,
+            chartVimPreview: chartVimPreview || undefined,
             userQuestion: diagUserQ,
             historySummaryLength: historySummary?.length ?? 0,
             historyTurnCount: rawHistory?.length ?? 0,

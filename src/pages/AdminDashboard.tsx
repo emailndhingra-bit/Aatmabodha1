@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, Fragment, useRef } from 'react';
 import type { CSSProperties } from 'react';
+import { formatDistanceToNow, isValid, parseISO } from 'date-fns';
 import {
   buildAnalysisResultFromChartJson,
   convertToISTForAPI,
@@ -191,6 +192,17 @@ function bucketLanguage(code: string | null | undefined): string {
 
 function isSameMonth(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+}
+
+function formatAdminLastQuestionRelative(iso: string | null | undefined): string {
+  if (!iso) return 'No questions logged yet';
+  try {
+    const d = parseISO(iso);
+    if (!isValid(d)) return '—';
+    return `Last asked ${formatDistanceToNow(d, { addSuffix: true })}`;
+  } catch {
+    return '—';
+  }
 }
 
 function buildAnalyticsModel(stats: any, users: any[]) {
@@ -1021,6 +1033,14 @@ export default function AdminDashboard() {
     const d = await r.json();
     setUsers(Array.isArray(d) ? d : []);
   }, [headers]);
+
+  const prevAdminTabRef = useRef(tab);
+  useEffect(() => {
+    if (tab === 'users' && prevAdminTabRef.current !== 'users') {
+      void fetchUsers();
+    }
+    prevAdminTabRef.current = tab;
+  }, [tab, fetchUsers]);
 
   const fetchStats = async () => {
     const r = await fetch(`${BACKEND}/api/admin/stats`, { headers });
@@ -1942,6 +1962,10 @@ export default function AdminDashboard() {
       {/* USERS TAB */}
       {tab === 'users' && (
         <div style={{ overflowX: 'auto' }}>
+          <p style={{ fontSize: 12, color: '#888', margin: '0 0 12px', lineHeight: 1.45 }}>
+            Users are listed by most recent oracle question (newest first). Anyone with no logged questions appears at the
+            bottom.
+          </p>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#1a1a2e' }}>
@@ -2049,6 +2073,9 @@ export default function AdminDashboard() {
                               Edit Quota ✏️
                             </button>
                           )}
+                          <span style={{ fontSize: 11, color: '#6a6a7a', lineHeight: 1.35 }}>
+                            {formatAdminLastQuestionRelative(u.lastQuestionAt)}
+                          </span>
                         </div>
                       );
                     })()}

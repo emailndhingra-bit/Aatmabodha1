@@ -456,6 +456,25 @@ let QuestionsService = class QuestionsService {
             select: ['questionText', 'createdAt', 'language'],
         });
     }
+    async getLatestQuestionAtByUserHash() {
+        const rows = await this.repo
+            .createQueryBuilder('q')
+            .select('q.userHash', 'userHash')
+            .addSelect('MAX(q.createdAt)', 'lastAt')
+            .groupBy('q.userHash')
+            .getRawMany();
+        const m = new Map();
+        for (const row of rows) {
+            const hash = String(row.userHash ?? row.userhash ?? '').trim();
+            if (!hash)
+                continue;
+            const raw = row.lastAt ?? row.lastat;
+            const d = raw instanceof Date ? raw : new Date(String(raw));
+            if (!Number.isNaN(d.getTime()))
+                m.set(hash, d);
+        }
+        return m;
+    }
 };
 exports.QuestionsService = QuestionsService;
 exports.QuestionsService = QuestionsService = __decorate([

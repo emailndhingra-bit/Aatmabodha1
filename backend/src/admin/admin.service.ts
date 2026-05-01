@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { ChartService } from '../chart/chart.service';
 import { ProfilesService } from '../profiles/profiles.service';
 import { UsersService } from '../users/users.service';
+import { QuestionsService } from '../questions/questions.service';
 import { GeminiService } from '../gemini/gemini.service';
 import { SarvamService } from '../sarvam/sarvam.service';
 import { User } from '../users/user.entity';
@@ -16,6 +17,7 @@ export class AdminService {
     private readonly chartService: ChartService,
     private readonly profilesService: ProfilesService,
     private readonly usersService: UsersService,
+    private readonly questionsService: QuestionsService,
     private readonly geminiService: GeminiService,
     private readonly sarvamService: SarvamService,
   ) {}
@@ -59,10 +61,28 @@ export class AdminService {
       quota_source: 'custom' | 'default';
       createdAt: Date;
       updatedAt: Date;
+      lastQuestionAt: Date | null;
     }>
   > {
-    const users = await this.usersService.getAllUsers();
-    return users.map((u) => this.toAdminUserRow(u));
+    const [users, latestByHash] = await Promise.all([
+      this.usersService.getAllUsers(),
+      this.questionsService.getLatestQuestionAtByUserHash(),
+    ]);
+    const rows = users.map((u) => {
+      const base = this.toAdminUserRow(u);
+      const h = this.questionsService.hashUser(u.id);
+      const lastQuestionAt = latestByHash.get(h) ?? null;
+      return { ...base, lastQuestionAt };
+    });
+    rows.sort((a, b) => {
+      const ta = a.lastQuestionAt?.getTime();
+      const tb = b.lastQuestionAt?.getTime();
+      if (ta == null && tb == null) return 0;
+      if (ta == null) return 1;
+      if (tb == null) return -1;
+      return tb - ta;
+    });
+    return rows;
   }
 
   private toAdminUserRow(u: User) {

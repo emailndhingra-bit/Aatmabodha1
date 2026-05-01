@@ -1,6 +1,7 @@
 import { ChartService } from '../chart/chart.service';
 import { ProfilesService } from '../profiles/profiles.service';
 import { UsersService } from '../users/users.service';
+import { QuestionsService } from '../questions/questions.service';
 import { GeminiService } from '../gemini/gemini.service';
 import { SarvamService } from '../sarvam/sarvam.service';
 import { AdminQuickChartDto } from './dto/admin-quick-chart.dto';
@@ -9,9 +10,10 @@ export declare class AdminService {
     private readonly chartService;
     private readonly profilesService;
     private readonly usersService;
+    private readonly questionsService;
     private readonly geminiService;
     private readonly sarvamService;
-    constructor(chartService: ChartService, profilesService: ProfilesService, usersService: UsersService, geminiService: GeminiService, sarvamService: SarvamService);
+    constructor(chartService: ChartService, profilesService: ProfilesService, usersService: UsersService, questionsService: QuestionsService, geminiService: GeminiService, sarvamService: SarvamService);
     quickChart(admin: {
         id: string;
     }, dto: AdminQuickChartDto): Promise<{
@@ -31,6 +33,7 @@ export declare class AdminService {
         quota_source: 'custom' | 'default';
         createdAt: Date;
         updatedAt: Date;
+        lastQuestionAt: Date | null;
     }>>;
     private toAdminUserRow;
     setUserQuota(userId: string, quota: number): Promise<{
@@ -43,7 +46,7 @@ export declare class AdminService {
         questionsLimit: number;
         customQuota: number;
         current_quota: number;
-        quota_source: "default" | "custom";
+        quota_source: "custom" | "default";
         createdAt: Date;
         updatedAt: Date;
     }>;

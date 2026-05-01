@@ -14,15 +14,17 @@ const common_1 = require("@nestjs/common");
 const chart_service_1 = require("../chart/chart.service");
 const profiles_service_1 = require("../profiles/profiles.service");
 const users_service_1 = require("../users/users.service");
+const questions_service_1 = require("../questions/questions.service");
 const gemini_service_1 = require("../gemini/gemini.service");
 const sarvam_service_1 = require("../sarvam/sarvam.service");
 const ist_chart_payload_util_1 = require("./ist-chart-payload.util");
 const oracle_tts_system_1 = require("./oracle-tts.system");
 let AdminService = class AdminService {
-    constructor(chartService, profilesService, usersService, geminiService, sarvamService) {
+    constructor(chartService, profilesService, usersService, questionsService, geminiService, sarvamService) {
         this.chartService = chartService;
         this.profilesService = profilesService;
         this.usersService = usersService;
+        this.questionsService = questionsService;
         this.geminiService = geminiService;
         this.sarvamService = sarvamService;
     }
@@ -51,8 +53,28 @@ let AdminService = class AdminService {
         return { chart, profile };
     }
     async listUsersForAdmin() {
-        const users = await this.usersService.getAllUsers();
-        return users.map((u) => this.toAdminUserRow(u));
+        const [users, latestByHash] = await Promise.all([
+            this.usersService.getAllUsers(),
+            this.questionsService.getLatestQuestionAtByUserHash(),
+        ]);
+        const rows = users.map((u) => {
+            const base = this.toAdminUserRow(u);
+            const h = this.questionsService.hashUser(u.id);
+            const lastQuestionAt = latestByHash.get(h) ?? null;
+            return { ...base, lastQuestionAt };
+        });
+        rows.sort((a, b) => {
+            const ta = a.lastQuestionAt?.getTime();
+            const tb = b.lastQuestionAt?.getTime();
+            if (ta == null && tb == null)
+                return 0;
+            if (ta == null)
+                return 1;
+            if (tb == null)
+                return -1;
+            return tb - ta;
+        });
+        return rows;
     }
     toAdminUserRow(u) {
         const cap = this.usersService.getEffectiveQuota(u);
@@ -121,6 +143,7 @@ exports.AdminService = AdminService = __decorate([
     __metadata("design:paramtypes", [chart_service_1.ChartService,
         profiles_service_1.ProfilesService,
         users_service_1.UsersService,
+        questions_service_1.QuestionsService,
         gemini_service_1.GeminiService,
         sarvam_service_1.SarvamService])
 ], AdminService);

@@ -23,6 +23,9 @@ let ChartController = class ChartController {
     async createChart(body) {
         return await this.chartService.createChart(body);
     }
+    async refreshChart(body) {
+        return await this.chartService.fetchChartFresh(body);
+    }
 };
 exports.ChartController = ChartController;
 __decorate([
@@ -32,6 +35,13 @@ __decorate([
     __metadata("design:paramtypes", [create_chart_dto_1.CreateChartDto]),
     __metadata("design:returntype", Promise)
 ], ChartController.prototype, "createChart", null);
+__decorate([
+    (0, common_1.Post)('refresh'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [create_chart_dto_1.CreateChartDto]),
+    __metadata("design:returntype", Promise)
+], ChartController.prototype, "refreshChart", null);
 exports.ChartController = ChartController = __decorate([
     (0, common_1.Controller)('chart'),
     __metadata("design:paramtypes", [chart_service_1.ChartService])

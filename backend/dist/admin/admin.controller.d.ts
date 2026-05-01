@@ -22,6 +22,7 @@ export declare class AdminController {
         quota_source: "custom" | "default";
         createdAt: Date;
         updatedAt: Date;
+        lastQuestionAt: Date | null;
     }[]>;
     patchQuota(userId: string, body: UpdateQuotaDto): Promise<{
         id: string;
@@ -33,7 +34,7 @@ export declare class AdminController {
         questionsLimit: number;
         customQuota: number;
         current_quota: number;
-        quota_source: "default" | "custom";
+        quota_source: "custom" | "default";
         createdAt: Date;
         updatedAt: Date;
     }>;

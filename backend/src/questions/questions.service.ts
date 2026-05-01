@@ -581,4 +581,23 @@ export class QuestionsService {
       select: ['questionText', 'createdAt', 'language'],
     });
   }
+
+  /** MAX(createdAt) per userHash — same hash as {@link hashUser}. */
+  async getLatestQuestionAtByUserHash(): Promise<Map<string, Date>> {
+    const rows = await this.repo
+      .createQueryBuilder('q')
+      .select('q.userHash', 'userHash')
+      .addSelect('MAX(q.createdAt)', 'lastAt')
+      .groupBy('q.userHash')
+      .getRawMany();
+    const m = new Map<string, Date>();
+    for (const row of rows as Record<string, unknown>[]) {
+      const hash = String(row.userHash ?? row.userhash ?? '').trim();
+      if (!hash) continue;
+      const raw = row.lastAt ?? row.lastat;
+      const d = raw instanceof Date ? raw : new Date(String(raw));
+      if (!Number.isNaN(d.getTime())) m.set(hash, d);
+    }
+    return m;
+  }
 }

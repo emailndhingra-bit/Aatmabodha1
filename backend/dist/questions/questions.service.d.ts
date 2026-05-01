@@ -34,4 +34,5 @@ export declare class QuestionsService {
     getStats(): Promise<any>;
     getRecentQuestions(limit?: number): Promise<QuestionLog[]>;
     getRecentByUser(userId: string, limit?: number): Promise<Pick<QuestionLog, 'questionText' | 'createdAt' | 'language'>[]>;
+    getLatestQuestionAtByUserHash(): Promise<Map<string, Date>>;
 }
