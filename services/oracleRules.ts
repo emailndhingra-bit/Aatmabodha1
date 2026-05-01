@@ -707,6 +707,8 @@ Step 5. DASHA ACTIVATION GATE (3 systems, depth-aware).
   • CHARA / JAIMINI (CD) — read MAHADASHA (MD) + ANTARDASHA (AD). Two levels deep. AD is the sharpest signal here; signs activate, not planets.
   • YOGINI (YD) — read MAHADASHA (MD) + ANTARDASHA (AD). Two levels deep. AD names the emotional/karmic flavor of the moment (Mangala = aggression, Pingala = passion, Dhanya = fortune, Bhramari = restlessness, Bhadrika = stability, Ulka = friction, Siddha = manifestation, Sankata = hardship).
 
+Dasha is **only the potential** — never the sole trigger. You MUST cross-reference active and within-window future **Gochar** (Saturn/Jupiter/Nodes over relevant houses; geometrically anchored by Step 4 BAV on the significator's **transit sign**) and **KP Cuspal Sub-lord significations** for the target house before calling any period an **active** timing window.
+
 CONFLUENCE READING:
   • All 3 systems point to same significator at MD level → ERA-DEFINING window. Once-in-decades.
   • All 3 align at MD/AD level → Tier 1 timing certainty. State boldly.
@@ -964,16 +966,20 @@ ANY question containing timing or probability triggers — "kab", "when", "kitne
 
 FORMAT (mandatory):
 
+Every window's proof line MUST mathematically triangulate three independent locks in plain prose (no bracketed tags): (1) **Dasha** — Vimshottari (VD MD/AD/PD) and/or Chara/Jaimini (CD) and/or Yogini (YD) as depth rules in Step 5 demand; (2) **Gochar** — name the specific transit action of **Saturn and/or Jupiter and/or the nodal axis (Rahu-Ketu)** over the question-relevant houses (sign/house overlay, aspect, or return-type geometry as the bundle shows); (3) **KP** — the relevant **Cuspal Sub-lord** for the target house must be cited as confirming or denying the event for that window.
+
+**Never output a timing window based solely on Dasha.** If Dasha is active but Gochar is adverse for that outcome or KP denies the event for the target house, downgrade the probability heavily or reject that window and substitute a chronologically honest alternative.
+
 **Window 1 — Date Range: X%**
-One or two lines of proof from chart: dasha, transit, and house combination — woven in plain prose, no bracketed tags.
+One or two lines of proof weaving all three locks above — not dasha alone.
 One Era-aligned Action Bridge line when mechanic 13 requires it for this window (bridge scale must match this window's date range, not a mismatched "tomorrow" line).
 
 **Window 2 — Date Range: Y%**
-One or two lines of proof — plain prose, no bracketed tags.
+One or two lines of proof with the same triple-lock triangulation — plain prose, no bracketed tags.
 One Era-aligned Action Bridge line when required.
 
 **Window 3 — Date Range: Z%**
-One or two lines of proof for the lowest-probability or fallback window — plain prose, no bracketed tags.
+One or two lines of proof for the lowest-probability or fallback window — same triple-lock standard; if a lock is absent from bundle, say so in one plain clause and cap confidence accordingly — plain prose, no bracketed tags.
 One Era-aligned Action Bridge line when required.
 
 Then ONE line asking confirmation: "Inme se kaunsa match karta hai?" / "Which one resonates?"
@@ -990,6 +996,10 @@ Astrology math is cyclical, but human life is linear. Before outputting any of t
 If the highest mathematical probability falls in an impossible age, DO NOT output it as a valid event window. Shift to the next chronologically logical window.
 
 PROBABILITY CALCULATION (use the matrix coverage formula in Layer 3 + this engine):
+
+THE TRIPLE-LOCK RULE (strict gate — evaluate before you finalize the three windows and before summing line items below): Base probability assumes **Dasha alignment** (VD/CD/YD) for that window. To cross **60%** after stacking adjustments, **Gochar must support** the outcome: Jupiter/Saturn **double transit** (or a coherent **nodal-axis** trigger over the relevant houses) must not contradict the event; if it does, cap below 60% or reject the window. To cross **75%** (Tier 1), the **KP Cuspal Sub-lord of the target house** must **signify** the event (not deny it) — without that KP lock, Tier 1 is forbidden.
+
+Before locking the published three windows, treat these as **mandatory confirmation passes** (not optional flavor text): the **+15% Double Transit** line item and the **+10% KP cuspal sub-lord confirms target house** line item — only award those bonuses when Gochar and KP genuinely pass; if they fail, do not silently keep a high percentage; strip those bonuses and downgrade or discard the window per the Triple-Lock Rule.
 
 Base 50%.
 +15% Dasha lord Shadbala >1.0
