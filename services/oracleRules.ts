@@ -297,7 +297,7 @@ export const WEIGHTING_MATRIX: WeightRow[] = [
     CAREER:8, MARRIAGE:8, HEALTH:8, WEALTH:8, PROPERTY:8, CHILDREN:8,
     TRAVEL:8, SPIRITUAL:7, PERSONALITY:6, TIMING:10, COMPATIBILITY:7, REMEDY:7, COMPOSITE:7 },
   { id: 53, feature: "Past 3 completed MDs (validation)", layer: "DASHA",
-    sqlSource: "dashas WHERE end_date < NOW LIMIT 6 per system",
+    sqlSource: "dashas WHERE end_date < NOW LIMIT 10 per system",
     CAREER:7, MARRIAGE:7, HEALTH:7, WEALTH:7, PROPERTY:7, CHILDREN:7,
     TRAVEL:6, SPIRITUAL:7, PERSONALITY:7, TIMING:8, COMPATIBILITY:6, REMEDY:6, COMPOSITE:7 },
 
