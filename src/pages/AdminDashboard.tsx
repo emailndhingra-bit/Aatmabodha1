@@ -1641,41 +1641,54 @@ export default function AdminDashboard() {
         setTimeout(() => setMsg(''), 3500);
         return;
       }
+
+      // 1. Set loading state to disable button
       setReplitExportProfileId(profileId);
+
       try {
         const url = `${BACKEND}/api/admin/users/${encodeURIComponent(userId)}/profiles/${encodeURIComponent(profileId)}/export-replit`;
-        const r = await fetch(url, { method: 'GET', headers: { Authorization: `Bearer ${token}` } });
+        const r = await fetch(url, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
         if (!r.ok) {
           const errBody = await r.text();
           let message = `Export failed (${r.status})`;
           try {
-            const j = JSON.parse(errBody);
-            if (j?.message != null) {
-              message = Array.isArray(j.message) ? j.message.join('; ') : String(j.message);
-            }
-          } catch {
-            if (errBody?.trim()) message = errBody.trim().slice(0, 400);
+            const parsed = JSON.parse(errBody);
+            if (parsed.message) message = parsed.message;
+          } catch (e) {
+            // If it's not JSON, stick to the default error message
           }
           setMsg(message);
-          setTimeout(() => setMsg(''), 6000);
-          return;
+          setTimeout(() => setMsg(''), 3500);
+          return; // Exit early on error
         }
-        const blob = await r.blob();
-        const objUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = objUrl;
-        a.download = `profile_${profileId}_replit_export.zip`;
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(objUrl);
-        setMsg('ZIP download started.');
-        setTimeout(() => setMsg(''), 2500);
-      } catch (e: any) {
-        setMsg(e?.message || 'Export failed — network error.');
-        setTimeout(() => setMsg(''), 5000);
+
+        // ==========================================
+        // 2. SUCCESS LOGIC: THE CRITICAL MISSING PART
+        // ==========================================
+        const blob = await r.blob(); // Get the raw zip stream as a blob
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+
+        link.href = downloadUrl;
+        link.download = `profile_${profileId}_replit_export.zip`;
+
+        // Append to body (required for Firefox compatibility), click, and remove
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // Clean up browser memory
+        window.URL.revokeObjectURL(downloadUrl);
+      } catch (error) {
+        console.error('ZIP Download Error:', error);
+        setMsg('Network error while generating ZIP.');
+        setTimeout(() => setMsg(''), 3500);
       } finally {
+        // 3. ALWAYS reset the loading state, whether success or fail
         setReplitExportProfileId(null);
       }
     },
