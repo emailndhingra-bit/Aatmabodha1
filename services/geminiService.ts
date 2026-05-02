@@ -446,7 +446,7 @@ function signToRashiId(sign: string | null | undefined): number | null {
     return i >= 0 ? i + 1 : null;
 }
 
-/** One row per planet × divisional chart (D1, D4, D9, D10, D60) for SQL→prompt mapping. */
+/** One row per planet × divisional chart — all 16 Shodashvarga (D1–D60 set) for SQL→prompt mapping. */
 export type DivisionalSqlInputRow = {
     planet_name: string;
     chart_type: string;
@@ -631,10 +631,12 @@ export const generateVirtualFileContext = (db: any, includeKB: boolean = false):
         }
         const divTransform = getDivisionalPromptPlacements(db);
         if (divTransform.length > 0) {
-            context += "\n[DIVISIONAL_TRANSFORMATION_LAYER (D1, D4, D9, D10, D60)]\n";
             context +=
+                "\n[DIVISIONAL_TRANSFORMATION_LAYER — SHODASHVARGA_ALL_16_JSON]\n";
+            context +=
+                "Charts included: D1, D2, D3, D4, D7, D9, D10, D12, D16, D20, D24, D27, D30, D40, D45, D60. " +
                 "Structured rows: { planet, chart, house_id, sign_name, avastha }. " +
-                "sign_name is from sidereal rashi (mapRashi); house_id is bhava arena — they are not the same index.\n";
+                "sign_name is sidereal rashi (mapRashi); house_id is bhava arena — not the same index.\n";
             context += `${JSON.stringify(divTransform, null, 2)}\n`;
         }
         const divChartRes = db.exec("SELECT chart_name, planet, sign, house, degree, status FROM divisional_charts ORDER BY chart_name, planet");
@@ -1481,8 +1483,12 @@ export const generateCompactOneLiner = (db: any): string => {
             .map(([p, v]) => `${p}[${v.join(',')}]`)
             .join(' | ');
         console.log("TRANSITS CHECK:", transitsStr);
-        const divJson = JSON.stringify(getDivisionalPromptPlacements(db));
-        return `Today:[${today}]\nTRANSITS: ${transitsStr}\nTRANSIT_BAV(planet BAV in all houses, ✓=≥4 delivers): ${transitBavStr}\nLagna:[${lagna}] Rasi:[${rasi}] Nak:[${nak}] NakLord:[${nakLord}]\nGana:[${gana}] Nadi:[${nadi}] Paya:[${paya}] AK:${akStr}\nPLANETS: ${planetsStr}\nSHADBHALA: ${shadStr}\nAVASTHA: ${avasthaStr}\nDASHA: ${dashaStr}\nSAV: ${savStr}\nBAV(planet-house scores,≥4=delivers): ${bavStr}\nWILLPOWER_SCORE: ${wpStr}\n(Formula: 3rdHouseSAV×0.5 + 1.5×MarsShadbala.\n>18.50=strong free will overrides fate |\n12-18.50=mixed | <12=fate dominant)\nBHRIGU_BINDU: ${bbStr}\nISHTA_DEVATA: ${idStr}\nASPECTS(planet→houses_aspected): ${aspectStr}\nFP: Lucky#[${luckyNum}] Days:[${luckyDays}] Stone:[${luckyStone}] Metal:[${luckyMetal}]\nGH: BadDay:[${badDay}] BadNak:[${badNak}] BadPlanets:[${badPlanets}]\nCHALIT_SHIFTS:${chalitStr}\nNBRY_CANCELLED:${nbryStr}\nDIVISIONAL_TRANSFORM_JSON:${divJson}`;
+        const divisionalPlacements = getDivisionalPromptPlacements(db);
+        const divisionalJsonPretty =
+            divisionalPlacements.length > 0
+                ? `\nSHODASHVARGA_16CHARTS_JSON (D1,D2,D3,D4,D7,D9,D10,D12,D16,D20,D24,D27,D30,D40,D45,D60 — planet×chart rows; house_id=bhava, sign_name=sidereal sign):\n${JSON.stringify(divisionalPlacements, null, 2)}\n`
+                : "";
+        return `Today:[${today}]\nTRANSITS: ${transitsStr}\nTRANSIT_BAV(planet BAV in all houses, ✓=≥4 delivers): ${transitBavStr}\nLagna:[${lagna}] Rasi:[${rasi}] Nak:[${nak}] NakLord:[${nakLord}]\nGana:[${gana}] Nadi:[${nadi}] Paya:[${paya}] AK:${akStr}${divisionalJsonPretty}PLANETS: ${planetsStr}\nSHADBHALA: ${shadStr}\nAVASTHA: ${avasthaStr}\nDASHA: ${dashaStr}\nSAV: ${savStr}\nBAV(planet-house scores,≥4=delivers): ${bavStr}\nWILLPOWER_SCORE: ${wpStr}\n(Formula: 3rdHouseSAV×0.5 + 1.5×MarsShadbala.\n>18.50=strong free will overrides fate |\n12-18.50=mixed | <12=fate dominant)\nBHRIGU_BINDU: ${bbStr}\nISHTA_DEVATA: ${idStr}\nASPECTS(planet→houses_aspected): ${aspectStr}\nFP: Lucky#[${luckyNum}] Days:[${luckyDays}] Stone:[${luckyStone}] Metal:[${luckyMetal}]\nGH: BadDay:[${badDay}] BadNak:[${badNak}] BadPlanets:[${badPlanets}]\nCHALIT_SHIFTS:${chalitStr}\nNBRY_CANCELLED:${nbryStr}`;
     } catch (e) {
         console.error("Error generating compact one liner", e);
         return "";
