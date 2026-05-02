@@ -22,6 +22,7 @@ const admin_module_1 = require("./admin/admin.module");
 const faq_bot_module_1 = require("./faq-bot/faq-bot.module");
 const startup_vibe_module_1 = require("./startup-vibe/startup-vibe.module");
 const env_validation_1 = require("./config/env.validation");
+const config_version_controller_1 = require("./config/config-version.controller");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -61,6 +62,7 @@ exports.AppModule = AppModule = __decorate([
             faq_bot_module_1.FaqBotModule,
             startup_vibe_module_1.StartupVibeModule,
         ],
+        controllers: [config_version_controller_1.ConfigVersionController],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map

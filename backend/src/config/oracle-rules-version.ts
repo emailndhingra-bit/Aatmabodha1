@@ -1,7 +1,6 @@
 /**
- * Oracle rules version for Gemini cache keys — must match
- * `ORACLE_RULES_VERSION` in `services/oracleRules.ts` at repo root.
- * Kept under backend/src so Nest `rootDir` stays `./src` and `nest build`
- * emits `dist/main.js` (Render runs `node dist/main.js`).
+ * Single source of truth for Oracle rules / Gemini cache versioning.
+ * Imported by the Nest backend (e.g. gemini.service) and re-exported from
+ * repo-root `services/oracleRules.ts` for the Vite frontend bundle.
  */
 export const ORACLE_RULES_VERSION = 'V6.6.0';

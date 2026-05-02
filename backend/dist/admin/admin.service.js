@@ -12,7 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminService = void 0;
 const common_1 = require("@nestjs/common");
 const promises_1 = require("node:stream/promises");
-const archiver_1 = require("archiver");
+const archiver = require("archiver");
 const chart_service_1 = require("../chart/chart.service");
 const profiles_service_1 = require("../profiles/profiles.service");
 const users_service_1 = require("../users/users.service");
@@ -133,7 +133,7 @@ let AdminService = class AdminService {
         const filename = `profile_${profileId}_replit_export.zip`;
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        const archive = (0, archiver_1.default)('zip', { zlib: { level: 9 } });
+        const archive = archiver('zip', { zlib: { level: 9 } });
         archive.pipe(res);
         archive.append(rawText, { name: 'replit_raw_output.json' });
         const exportTs = new Date().toISOString();

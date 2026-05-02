@@ -491,7 +491,6 @@ export const buildPromptContext = (sqlRows: DivisionalSqlInputRow[]): PromptChar
     });
 };
 
-/** Reads `planets` and emits one input row per (planet, D1|D4|D9|D10|D60). `avastha` is D1 balavastha (drives Mrita/Vriddha archetypes). */
 export function buildDivisionalSqlRowsFromPlanetsTable(db: any): DivisionalSqlInputRow[] {
     if (!db) return [];
     const out: DivisionalSqlInputRow[] = [];
@@ -499,9 +498,20 @@ export function buildDivisionalSqlRowsFromPlanetsTable(db: any): DivisionalSqlIn
         const res = db.exec(`
             SELECT planet_name,
                    D1_Rashi_house, D1_Rashi_sign, D1_Rashi_avastha,
+                   D2_Hora_house, D2_Hora_sign,
+                   D3_Drekkana_house, D3_Drekkana_sign,
                    D4_Chaturthamsha_house, D4_Chaturthamsha_sign,
+                   D7_Saptamamsha_house, D7_Saptamamsha_sign,
                    D9_Navamsha_house, D9_Navamsha_sign,
                    D10_Dasamsa_house, D10_Dasamsa_sign,
+                   D12_Dwadamsha_house, D12_Dwadamsha_sign,
+                   D16_Shodasamsha_house, D16_Shodasamsha_sign,
+                   D20_Vimshamsha_house, D20_Vimshamsha_sign,
+                   D24_Chaturvimshamsha_house, D24_Chaturvimshamsha_sign,
+                   D27_Saptavimshamsha_house, D27_Saptavimshamsha_sign,
+                   D30_Trimshamsha_house, D30_Trimshamsha_sign,
+                   D40_Khavedamsha_house, D40_Khavedamsha_sign,
+                   D45_Akshavedamsha_house, D45_Akshavedamsha_sign,
                    D60_Shastiamsa_house, D60_Shastiamsa_sign
             FROM planets
             WHERE planet_name != 'Lagna'
@@ -510,12 +520,25 @@ export function buildDivisionalSqlRowsFromPlanetsTable(db: any): DivisionalSqlIn
         const values = res[0]?.values as any[][] | undefined;
         if (!values?.length) return out;
 
+        // Static Mapping for all 16 Shodashvarga Charts
+        // Index 0: planet_name, Index 3: avastha
         const charts: { chart: string; houseIdx: number; signIdx: number }[] = [
             { chart: "D1", houseIdx: 1, signIdx: 2 },
-            { chart: "D4", houseIdx: 4, signIdx: 5 },
-            { chart: "D9", houseIdx: 6, signIdx: 7 },
-            { chart: "D10", houseIdx: 8, signIdx: 9 },
-            { chart: "D60", houseIdx: 10, signIdx: 11 },
+            { chart: "D2", houseIdx: 4, signIdx: 5 },
+            { chart: "D3", houseIdx: 6, signIdx: 7 },
+            { chart: "D4", houseIdx: 8, signIdx: 9 },
+            { chart: "D7", houseIdx: 10, signIdx: 11 },
+            { chart: "D9", houseIdx: 12, signIdx: 13 },
+            { chart: "D10", houseIdx: 14, signIdx: 15 },
+            { chart: "D12", houseIdx: 16, signIdx: 17 },
+            { chart: "D16", houseIdx: 18, signIdx: 19 },
+            { chart: "D20", houseIdx: 20, signIdx: 21 },
+            { chart: "D24", houseIdx: 22, signIdx: 23 },
+            { chart: "D27", houseIdx: 24, signIdx: 25 },
+            { chart: "D30", houseIdx: 26, signIdx: 27 },
+            { chart: "D40", houseIdx: 28, signIdx: 29 },
+            { chart: "D45", houseIdx: 30, signIdx: 31 },
+            { chart: "D60", houseIdx: 32, signIdx: 33 }
         ];
 
         for (const row of values) {

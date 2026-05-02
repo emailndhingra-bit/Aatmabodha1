@@ -56,7 +56,7 @@
  * Author: Aatmabodha core team + Claude (Anthropic) collaboration
  */
 
-export const ORACLE_RULES_VERSION = "V6.6.0";
+export { ORACLE_RULES_VERSION } from '../backend/src/config/oracle-rules-version';
 
 // ════════════════════════════════════════════════════════════════════
 // PART 1 — WEIGHTING MATRIX (typed export)

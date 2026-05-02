@@ -1,1 +1,1 @@
-export declare const ORACLE_RULES_VERSION = "V6.5.1";
+export declare const ORACLE_RULES_VERSION = "V6.6.0";

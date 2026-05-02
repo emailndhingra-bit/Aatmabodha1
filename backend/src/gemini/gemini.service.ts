@@ -55,8 +55,7 @@ export class GeminiService {
       .digest('hex')
       .substring(0, 16);
 
-    // Oracle rules version from config/oracle-rules-version.ts — bump there
-    // and in services/oracleRules.ts together on rules edits
+    // Oracle rules version — bump only in config/oracle-rules-version.ts (SSOT)
     const prefix = `${userId ?? 'anon'}\x1e${(natalFingerprint ?? '').trim()}\x1e${ORACLE_RULES_VERSION}\x1e${contentHash}\x1e`;
 
     return createHash('sha256').update(prefix).digest('hex');

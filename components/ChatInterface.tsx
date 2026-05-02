@@ -315,6 +315,11 @@ const GLOBAL_LANGUAGES = [
   { code: 'Turkish', label: 'Türkçe', desc: 'Kader ve Yıldızlar' }
 ];
 
+const APP_BACKEND_BASE =
+  (typeof import.meta !== 'undefined' &&
+    (import.meta as ImportMeta & { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL) ||
+  'https://aatmabodha1-backend.onrender.com';
+
 const ChatInterface: React.FC<Props> = ({
   chatSession,
   db,
@@ -377,6 +382,7 @@ const ChatInterface: React.FC<Props> = ({
   const [pendingQuestions, setPendingQuestions] = useState<{ id: number; text: string }[] | null>(null);
   /** `null` = loading; `none` = not signed in (no cached user). */
   const [quotaRemaining, setQuotaRemaining] = useState<number | 'Unlimited' | 'none' | null>(null);
+  const [oracleRulesVersion, setOracleRulesVersion] = useState<string | null>(null);
 
   // ── Memory & Token Management State ──────────────────
   const [sessionTokens, setSessionTokens] = useState(0);
@@ -490,6 +496,25 @@ const ChatInterface: React.FC<Props> = ({
     window.addEventListener('focus', syncQuotaFromServer);
     return () => window.removeEventListener('focus', syncQuotaFromServer);
   }, [syncQuotaFromServer]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch(`${APP_BACKEND_BASE}/api/config/version`, { credentials: 'omit' });
+        if (!r.ok) return;
+        const data = (await r.json()) as { version?: string };
+        if (!cancelled && typeof data.version === 'string' && data.version.trim()) {
+          setOracleRulesVersion(data.version.trim());
+        }
+      } catch {
+        /* optional badge — ignore network errors */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Loading Message Rotation Logic (always start with 3-min wait copy, then cycle)
   useEffect(() => {
@@ -1531,6 +1556,9 @@ const ChatInterface: React.FC<Props> = ({
                 </h2>
                 <p className="text-amber-50/60 text-xs font-medium font-serif truncate">
                     {language || (cultureMode === 'JP' ? "Japanese" : cultureMode === 'HI' ? "Hindi" : "Hinglish")} • Ancient Logic. Modern Code.
+                    {oracleRulesVersion ? (
+                      <span className="text-amber-200/35 font-mono"> • Rules {oracleRulesVersion}</span>
+                    ) : null}
                 </p>
             </div>
         </div>

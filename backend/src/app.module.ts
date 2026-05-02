@@ -13,6 +13,7 @@ import { AdminModule } from './admin/admin.module';
 import { FaqBotModule } from './faq-bot/faq-bot.module';
 import { StartupVibeModule } from './startup-vibe/startup-vibe.module';
 import { validateEnv } from './config/env.validation';
+import { ConfigVersionController } from './config/config-version.controller';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { validateEnv } from './config/env.validation';
     FaqBotModule,
     StartupVibeModule,
   ],
+  controllers: [ConfigVersionController],
 })
 export class AppModule {}
 
