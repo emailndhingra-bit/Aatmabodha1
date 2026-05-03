@@ -1332,11 +1332,62 @@ export async function computeNatalContextFingerprint(db: any): Promise<string> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// generateCompactOneLiner — unchanged, no API calls
+// generateCompactOneLiner — compact natal context line for prompts (no API calls)
 // ─────────────────────────────────────────────────────────────
 export const generateCompactOneLiner = (db: any): string => {
     if (!db) return "";
     try {
+        const dmyToSortable = (d: string) =>
+            d && String(d).length >= 10
+                ? `${String(d).slice(6, 10)}-${String(d).slice(3, 5)}-${String(d).slice(0, 2)}`
+                : "";
+        const sqlFutureDasha = (system: string) =>
+            `SELECT period_name, end_date FROM dashas WHERE system = '${system.replace(/'/g, "''")}' AND substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||substr(end_date,1,2) > date('now') ORDER BY substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||substr(end_date,1,2) ASC LIMIT 3`;
+        const compactNextThree = (system: string): string => {
+            const res = db.exec(sqlFutureDasha(system));
+            const rows = res[0]?.values as any[][] | undefined;
+            if (!rows?.length) return "";
+            return rows.map((r) => `${r[0]}~${r[1]}`).join("|");
+        };
+        const computePastVimMahadashas = (): string => {
+            const res = db.exec(
+                `SELECT period_name, start_date, end_date FROM dashas WHERE system = 'Vimshottari' ORDER BY substr(start_date,7,4)||'-'||substr(start_date,4,2)||'-'||substr(start_date,1,2) ASC`,
+            );
+            const rows = res[0]?.values as any[][] | undefined;
+            if (!rows?.length) return "";
+            type Block = { md: string; maxEnd: string; maxEndKey: string };
+            const blocks: Block[] = [];
+            let curMd = "";
+            let curMaxEnd = "";
+            let curMaxKey = "";
+            const bumpMax = (end: string) => {
+                const k = dmyToSortable(end);
+                if (k && (!curMaxKey || k > curMaxKey)) {
+                    curMaxKey = k;
+                    curMaxEnd = end;
+                }
+            };
+            for (const row of rows) {
+                const name = String(row[0] || "");
+                const md = name.split(" - ")[0].trim();
+                const end = String(row[2] || "");
+                if (!md) continue;
+                if (md !== curMd) {
+                    if (curMd) blocks.push({ md: curMd, maxEnd: curMaxEnd, maxEndKey: curMaxKey });
+                    curMd = md;
+                    curMaxEnd = "";
+                    curMaxKey = "";
+                    bumpMax(end);
+                } else {
+                    bumpMax(end);
+                }
+            }
+            if (curMd) blocks.push({ md: curMd, maxEnd: curMaxEnd, maxEndKey: curMaxKey });
+            const todayK = new Date().toISOString().split("T")[0];
+            const completed = blocks.filter((b) => b.maxEndKey && b.maxEndKey < todayK);
+            const last2 = completed.slice(-2);
+            return last2.map((b) => `${b.md}→${b.maxEnd}`).join("|");
+        };
         const today = new Date().toISOString().split('T')[0];
         let lagna = "", rasi = "", nak = "", nakLord = "", gana = "", nadi = "", paya = "";
         const avkRes = db.exec("SELECT key, value FROM avkahada_chakra");
@@ -1394,13 +1445,27 @@ export const generateCompactOneLiner = (db: any): string => {
         const avasthaStr = avasthaRes[0]?.values?.map((r: any[]) => `${r[0]}:${r[1]}${r[2]?'(Combust)':''}`).join(' | ') || '';
         const nbryRes = db.exec(`SELECT planet_name, D1_Rashi_status FROM planets WHERE D1_Rashi_nbry='Yes'`);
         const nbryStr = nbryRes[0]?.values?.map((r:any[]) => `${r[0]}(${r[1]}+NBRY)`).join(' | ') || "";
-        const dRes = db.exec(`SELECT period_name, end_date FROM dashas WHERE system = 'Vimshottari' AND substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||substr(end_date,1,2) > date('now') ORDER BY substr(end_date,7,4)||'-'||substr(end_date,4,2)||'-'||substr(end_date,1,2) ASC LIMIT 3`);
-        let dashaStr = "";
-        if (dRes.length > 0 && dRes[0].values?.length > 0) {
-            const rows = dRes[0].values;
-            const ad = rows[0]; const pd = rows.length > 1 ? rows[1] : null;
-            dashaStr = `${ad[0]} ends:${ad[1]}`;
-            if (pd) dashaStr += ` | PD:${pd[0]} ends:${pd[1]}`;
+        const kpCuspRes = db.exec("SELECT cusp, sub_lord FROM kp_cusps ORDER BY cusp ASC");
+        let kpCuspsStr = "";
+        if (kpCuspRes.length > 0 && kpCuspRes[0].values?.length) {
+            kpCuspsStr = kpCuspRes[0].values.map((r: any[]) => `H${r[0]}:${r[1] ?? ""}`).join(";");
+        }
+        const dashaVim = compactNextThree("Vimshottari");
+        const dashaYog = compactNextThree("Yogini");
+        const dashaChara = compactNextThree("Chara (Jaimini)");
+        const dashasCombined = [dashaVim ? `VIM:${dashaVim}` : "", dashaYog ? `YOG:${dashaYog}` : "", dashaChara ? `CHARA:${dashaChara}` : ""]
+            .filter(Boolean)
+            .join(";");
+        const pastDashasStr = computePastVimMahadashas();
+        const avkFullRes = db.exec("SELECT key, value FROM avkahada_chakra ORDER BY key");
+        let avkFullStr = "";
+        if (avkFullRes.length > 0 && avkFullRes[0].values?.length) {
+            avkFullStr = avkFullRes[0].values
+                .map((row: any[]) => {
+                    const v = String(row[1] ?? "").replace(/\|/g, ",").replace(/\n/g, " ").replace(/;/g, ",");
+                    return `${row[0]}=${v}`;
+                })
+                .join(";");
         }
         const savRes = db.exec("SELECT house_number, points FROM ashtakvarga_summary ORDER BY house_number");
         const bavRes = db.exec(`
@@ -1433,26 +1498,25 @@ export const generateCompactOneLiner = (db: any): string => {
 
         const chalitRes = db.exec(`SELECT planet, from_house_d1, to_house_chalit FROM planet_shifts`);
         const chalitStr = chalitRes[0]?.values?.map((r:any[]) => `${r[0]}:H${r[1]}→H${r[2]}`).join(' | ') || "";
-        const fpRes = db.exec("SELECT key, value FROM favourable_points");
-        let luckyNum = "", luckyDays = "", luckyStone = "", luckyMetal = "";
-        if (fpRes.length > 0 && fpRes[0].values) {
-            fpRes[0].values.forEach((row: any[]) => {
-                const k = (row[0] || "").toLowerCase(); const v = row[1] || "";
-                if (k.includes('number')) luckyNum = v;
-                if (k.includes('day')) luckyDays = v;
-                if (k.includes('stone')) luckyStone = v;
-                if (k.includes('metal')) luckyMetal = v;
-            });
+        const fpRes = db.exec("SELECT key, value FROM favourable_points ORDER BY key");
+        let fpAllStr = "";
+        if (fpRes.length > 0 && fpRes[0].values?.length) {
+            fpAllStr = fpRes[0].values
+                .map((row: any[]) => {
+                    const v = String(row[1] ?? "").replace(/\|/g, ",").replace(/\n/g, " ").replace(/;/g, ",");
+                    return `${row[0]}=${v}`;
+                })
+                .join(";");
         }
-        const ghRes = db.exec("SELECT key, value FROM ghatak");
-        let badDay = "", badNak = "", badPlanets = "";
-        if (ghRes.length > 0 && ghRes[0].values) {
-            ghRes[0].values.forEach((row: any[]) => {
-                const k = (row[0] || "").toLowerCase(); const v = row[1] || "";
-                if (k.includes('day')) badDay = v;
-                if (k.includes('nakshatra')) badNak = v;
-                if (k.includes('planet')) badPlanets = v;
-            });
+        const ghRes = db.exec("SELECT key, value FROM ghatak ORDER BY key");
+        let ghAllStr = "";
+        if (ghRes.length > 0 && ghRes[0].values?.length) {
+            ghAllStr = ghRes[0].values
+                .map((row: any[]) => {
+                    const v = String(row[1] ?? "").replace(/\|/g, ",").replace(/\n/g, " ").replace(/;/g, ",");
+                    return `${row[0]}=${v}`;
+                })
+                .join(";");
         }
         const tRes = db.exec(
             "SELECT planet, sign FROM current_transits"
@@ -1488,7 +1552,11 @@ export const generateCompactOneLiner = (db: any): string => {
             divisionalPlacements.length > 0
                 ? `\nSHODASHVARGA_16CHARTS_JSON (D1,D2,D3,D4,D7,D9,D10,D12,D16,D20,D24,D27,D30,D40,D45,D60 — planet×chart rows; house_id=bhava, sign_name=sidereal sign):\n${JSON.stringify(divisionalPlacements, null, 2)}\n`
                 : "";
-        return `Today:[${today}]\nTRANSITS: ${transitsStr}\nTRANSIT_BAV(planet BAV in all houses, ✓=≥4 delivers): ${transitBavStr}\nLagna:[${lagna}] Rasi:[${rasi}] Nak:[${nak}] NakLord:[${nakLord}]\nGana:[${gana}] Nadi:[${nadi}] Paya:[${paya}] AK:${akStr}${divisionalJsonPretty}PLANETS: ${planetsStr}\nSHADBHALA: ${shadStr}\nAVASTHA: ${avasthaStr}\nDASHA: ${dashaStr}\nSAV: ${savStr}\nBAV(planet-house scores,≥4=delivers): ${bavStr}\nWILLPOWER_SCORE: ${wpStr}\n(Formula: 3rdHouseSAV×0.5 + 1.5×MarsShadbala.\n>18.50=strong free will overrides fate |\n12-18.50=mixed | <12=fate dominant)\nBHRIGU_BINDU: ${bbStr}\nISHTA_DEVATA: ${idStr}\nASPECTS(planet→houses_aspected): ${aspectStr}\nFP: Lucky#[${luckyNum}] Days:[${luckyDays}] Stone:[${luckyStone}] Metal:[${luckyMetal}]\nGH: BadDay:[${badDay}] BadNak:[${badNak}] BadPlanets:[${badPlanets}]\nCHALIT_SHIFTS:${chalitStr}\nNBRY_CANCELLED:${nbryStr}`;
+        const kpLine = kpCuspsStr ? `KP_CUSPS: ${kpCuspsStr}\n` : "";
+        const dashaLine = dashasCombined ? `DASHAS: ${dashasCombined}\n` : "";
+        const pastLine = pastDashasStr ? `PAST_DASHAS: ${pastDashasStr}\n` : "";
+        const avkLine = avkFullStr ? `AVK: ${avkFullStr}\n` : "";
+        return `Today:[${today}]\nTRANSITS: ${transitsStr}\nTRANSIT_BAV(planet BAV in all houses, ✓=≥4 delivers): ${transitBavStr}\nLagna:[${lagna}] Rasi:[${rasi}] Nak:[${nak}] NakLord:[${nakLord}]\n${kpLine}${dashaLine}${pastLine}${avkLine}Gana:[${gana}] Nadi:[${nadi}] Paya:[${paya}] AK:${akStr}${divisionalJsonPretty}PLANETS: ${planetsStr}\nSHADBHALA: ${shadStr}\nAVASTHA: ${avasthaStr}\nSAV: ${savStr}\nBAV(planet-house scores,≥4=delivers): ${bavStr}\nWILLPOWER_SCORE: ${wpStr}\n(Formula: 3rdHouseSAV×0.5 + 1.5×MarsShadbala.\n>18.50=strong free will overrides fate |\n12-18.50=mixed | <12=fate dominant)\nBHRIGU_BINDU: ${bbStr}\nISHTA_DEVATA: ${idStr}\nASPECTS(planet→houses_aspected): ${aspectStr}\nFP: ${fpAllStr}\nGH: ${ghAllStr}\nCHALIT_SHIFTS:${chalitStr}\nNBRY_CANCELLED:${nbryStr}`;
     } catch (e) {
         console.error("Error generating compact one liner", e);
         return "";
